@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pywrit"
-version = "0.2.1"
+version = "0.2.2"
 description = "Python client + CLI for Writ — the gate before the write"
 readme = "README.md"
 license = { text = "MIT" }

@@ -4,9 +4,12 @@
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 BASE = os.environ.get(
     "WRIT_BASE",
@@ -364,6 +367,130 @@ def infer_verb(rel_path, func_name, cls_name, kind):
                       _infer_action(func_name, kind))
 
 
+# ---------------------------------------------------------------------------
+# writ scan score: risk-graded "Writ Score" report. Lighthouse-style 0-100,
+# based only on what the AST scanner actually finds. The scanner is free
+# forever; scoring needs no API key.
+# ---------------------------------------------------------------------------
+_RISK_HIGH_ACTIONS = {"refund", "charge", "capture", "void", "payout",
+                      "transfer", "grant", "revoke", "issue", "promote",
+                      "elevate", "terminate"}
+_RISK_HIGH_DOMAINS = {"payment", "payments", "billing", "stripe", "invoice",
+                      "invoices", "subscription", "subscriptions",
+                      "iam", "auth", "role", "roles", "permission",
+                      "permissions", "admin", "token", "tokens", "identity",
+                      "aws", "infra", "infrastructure", "deploy", "deploys",
+                      "dns", "k8s", "kubernetes", "terraform", "ec2", "s3"}
+_RISK_DATA_DOMAINS = {"user", "users", "customer", "customers", "order",
+                      "orders", "record", "records", "account", "accounts",
+                      "crm"}
+_RISK_DELETE_ACTIONS = {"delete", "destroy", "drop", "purge", "archive"}
+_RISK_MED_SEND_ACTIONS = {"send", "notify", "dispatch", "emit", "broadcast",
+                          "alert", "publish"}
+_RISK_MED_DOMAINS = {"email", "sms", "notification", "notifications",
+                     "webhook", "webhooks", "slack", "ses", "sns"}
+_RISK_MED_UPDATE_ACTIONS = {"update", "modify", "patch", "upsert", "edit",
+                            "set"}
+_SCORE_MAX_ROWS = 30
+_SCORE_GAPS = [
+    "ORM .save() / .delete() on receivers the scanner cannot name as db-hinted",
+    "raw SQL strings built dynamically or passed through helpers",
+    "boto3 wrappers and shared AWS clients that rename API calls",
+    "Celery tasks, Dramatiq, RQ -- writes inside deferred callables",
+    "indirect writes through shared HTTP clients several layers down",
+]
+
+
+def _risk_tier(verb):
+    """Classify an inferred verb (domain.action) into high/medium/low risk.
+
+    Sees only the verb string; errs toward higher risk on money, identity,
+    deletion, and infra patterns. Honest about being a heuristic: the
+    report lists exactly what the scanner found, nothing more.
+    """
+    domain, _, action = verb.partition(".")
+    domain, action = domain.lower(), action.lower()
+    if action in _RISK_HIGH_ACTIONS:
+        return "high"
+    if domain in _RISK_HIGH_DOMAINS:
+        return "high"
+    if action in _RISK_DELETE_ACTIONS and domain in _RISK_DATA_DOMAINS:
+        return "high"
+    if action in _RISK_MED_SEND_ACTIONS:
+        return "medium"
+    if domain in _RISK_MED_DOMAINS:
+        return "medium"
+    if action in _RISK_MED_UPDATE_ACTIONS and domain in _RISK_DATA_DOMAINS:
+        return "medium"
+    return "low"
+
+
+def _score_report_rows(root, sites, gated_funcs):
+    """Return (rows, n_gated, total) for the score report.
+
+    rows: list of (tier, verb, rel_path, lineno, protected), sorted by
+    tier severity then path. A site is protected when its function already
+    has a gate call.
+    """
+    rows = []
+    for s in sites:
+        rel = _pathlib.Path(s.file).relative_to(root)
+        verb = infer_verb(rel, s.func, s.cls, s.kind)
+        rows.append((_risk_tier(verb), verb, str(rel), s.lineno,
+                     (s.file, s.func) in gated_funcs))
+    order = {"high": 0, "medium": 1, "low": 2}
+    rows.sort(key=lambda r: (order[r[0]], r[2], r[3]))
+    return rows
+
+
+def _writ_score(rows):
+    """0-100 from unprotected sites: -10 high, -5 medium, -2 low."""
+    penalty = sum({"high": 10, "medium": 5, "low": 2}[tier]
+                  for tier, _, _, _, protected in rows if not protected)
+    return max(0, 100 - penalty)
+
+
+def print_score_report(root, sites, gated_funcs):
+    """Print the Writ Score block. Pure read-only: no files written."""
+    rows = _score_report_rows(root, sites, gated_funcs)
+    total = len(rows)
+    score = _writ_score(rows)
+    n_gated = sum(1 for r in rows if r[4])
+    pct = (100 * n_gated // total) if total else 100
+
+    print()
+    print("Writ Score: %d/100" % score)
+    print()
+    if not total:
+        print("No write operations discovered.")
+        print()
+    else:
+        print("%d write operations discovered" % total)
+        print()
+        for tier, label in (("high", "HIGH RISK"), ("medium", "MEDIUM")):
+            tier_rows = [r for r in rows if r[0] == tier and not r[4]]
+            print("%s (%d)" % (label, len(tier_rows)))
+            for _, verb, rel, lineno, _ in tier_rows[:_SCORE_MAX_ROWS]:
+                print("  %-22s %s:%d" % (verb, rel, lineno))
+            if len(tier_rows) > _SCORE_MAX_ROWS:
+                print("  ... and %d more" % (len(tier_rows) - _SCORE_MAX_ROWS))
+            print()
+        n_low_unprot = sum(1 for r in rows if r[0] == "low" and not r[4])
+        print("UNPROTECTED (%d)" % n_low_unprot)
+        print("  %d write paths with no policy gate" % n_low_unprot)
+        print()
+        print("Coverage: %d/%d writes instrumented (%d%%)"
+              % (n_gated, total, pct))
+        print()
+    print("Not covered by this scanner (review by hand):")
+    for gap in _SCORE_GAPS:
+        print("  - %s" % gap)
+    print()
+    print("Scanner is free forever -- no API key needed to scan.")
+    print("Fix this with Writ: pip install pywrit && writ scan --apply")
+    return score
+
+
 def _should_skip(path, root, excludes):
     rel = path.relative_to(root)
     if any(p in _SKIP_DIR_NAMES or p.startswith(".") for p in rel.parts[:-1]):
@@ -523,6 +650,10 @@ def scan_cmd(args):
         verbs.setdefault(infer_verb(rel, func_name, cls_name, ss[0].kind),
                          "require_grant")
 
+    if args.score:
+        print_score_report(root, sites, gated_funcs)
+        return 0
+
     print("writ scan: %s" % root)
     print("  files scanned: %d  skipped: %d" % (len(files), len(skipped)))
     print("  write sites: %d in %d function(s)" % (total, len(by_func)))
@@ -531,6 +662,8 @@ def scan_cmd(args):
         print("  verbs discovered: %d" % len(verbs))
         for vname in sorted(verbs):
             print("    %s" % vname)
+
+    print_score_report(root, sites, gated_funcs)
 
     if verbs:
         ppath = _pathlib.Path(args.policy_out)
@@ -584,6 +717,320 @@ def scan_cmd(args):
             return 2
         return request("PUT", "/v1/policy", verbs, key=args.key)
     return 0
+
+
+
+# Verbs that move money. Amounts are aggregated for these in reports.
+MONEY_VERB_PATTERNS = (
+    "payments.",
+    "billing.",
+    "refund",
+    "payout",
+    "charge",
+    "transfer",
+    "invoice",
+)
+
+
+def request(method, path, payload=None, key=None, token=None):
+    headers = {"content-type": "application/json"}
+    if key:
+        headers["authorization"] = "Bearer " + key
+    elif token:
+        headers["authorization"] = token
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return 0, resp.read().decode()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode()
+
+
+# ---------------------------------------------------------------------------
+# Agent Action Report
+# ---------------------------------------------------------------------------
+
+def _is_money_verb(verb):
+    v = (verb or "").lower()
+    return any(p in v for p in MONEY_VERB_PATTERNS)
+
+
+def _parse_amount(receipt):
+    """Extract a dollar amount from a receipt.
+
+    Checks explicit amount fields first, then parses common patterns from
+    the target string. Returns a float (dollars) or None.
+    """
+    # Explicit fields (dollars or cents)
+    for field in ("amount", "amountDollars", "amount_dollars"):
+        val = receipt.get(field)
+        if val is not None:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                pass
+    for field in ("amountCents", "amount_cents"):
+        val = receipt.get(field)
+        if val is not None:
+            try:
+                return float(val) / 100.0
+            except (TypeError, ValueError):
+                pass
+    # Parse from target string: amount=5000, $50.00, 5000c, etc.
+    target = str(receipt.get("target", "") or "")
+    patterns = [
+        r"amount[=:]\s*\$?([\d,]+\.?\d*)",       # amount=5000, amount:$50.00
+        r"\$\s*([\d,]+\.?\d*)",                   # $50.00
+        r"([\d,]+\.?\d*)\s*(?:usd|dollars?)",     # 50 USD
+        r"([\d,]+)\s*cents?",                      # 5000 cents
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, target, re.IGNORECASE)
+        if m:
+            try:
+                val = float(m.group(1).replace(",", ""))
+                if "cent" in pattern:
+                    val = val / 100.0
+                return val
+            except ValueError:
+                continue
+    return None
+
+
+def _load_receipts_from_file(path):
+    """Load receipts from a JSON file (array or JSON-lines)."""
+    receipts = []
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read().strip()
+    if not content:
+        return receipts
+    # Try JSON array first
+    try:
+        data = json.loads(content)
+        if isinstance(data, list):
+            return [r for r in data if isinstance(r, dict)]
+        if isinstance(data, dict):
+            # Maybe {"receipts": [...]}
+            inner = data.get("receipts", data.get("items", []))
+            if isinstance(inner, list):
+                return [r for r in inner if isinstance(r, dict)]
+            return [data]
+    except json.JSONDecodeError:
+        pass
+    # Fall back to JSON lines
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+            if isinstance(r, dict):
+                receipts.append(r)
+        except json.JSONDecodeError:
+            continue
+    return receipts
+
+
+def _fetch_receipts_from_api(key, agent=None, since=None, limit=1000):
+    """Fetch receipts from the Writ API."""
+    receipts = []
+    cursor = None
+    while len(receipts) < limit:
+        params = {"limit": min(100, limit - len(receipts))}
+        if cursor:
+            params["since"] = cursor
+        url = BASE + "/v1/receipts?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(
+            url, headers={"authorization": "Bearer " + key}, method="GET"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as exc:
+            print(f"API error {exc.code}: {exc.read().decode()}", file=sys.stderr)
+            sys.exit(1)
+        batch = data.get("receipts", data.get("items", []))
+        if not batch:
+            break
+        receipts.extend(batch)
+        cursor = data.get("cursor")
+        if not cursor or len(batch) < params["limit"]:
+            break
+    return receipts
+
+
+def _filter_receipts(receipts, agent=None, since_ts=None):
+    out = []
+    for r in receipts:
+        if agent and r.get("agentId") != agent:
+            continue
+        if since_ts is not None:
+            try:
+                if int(r.get("createdAt", 0)) < since_ts:
+                    continue
+            except (TypeError, ValueError):
+                pass
+        out.append(r)
+    return out
+
+
+def _build_report(receipts, agent=None, period=None):
+    """Aggregate receipts into an executive summary dict."""
+    total = len(receipts)
+    allowed = sum(1 for r in receipts if r.get("decision") == "ALLOW")
+    denied = sum(1 for r in receipts if r.get("decision") == "DENY")
+    step_up = sum(1 for r in receipts if r.get("decision") == "STEP_UP")
+    revoked = sum(1 for r in receipts if r.get("decision") == "REVOKE")
+
+    # Per-verb breakdown
+    verbs = {}
+    for r in receipts:
+        verb = r.get("verb", "unknown")
+        entry = verbs.setdefault(verb, {"attempted": 0, "allowed": 0, "denied": 0})
+        entry["attempted"] += 1
+        if r.get("decision") == "ALLOW":
+            entry["allowed"] += 1
+        elif r.get("decision") == "DENY":
+            entry["denied"] += 1
+
+    # Money aggregation
+    money_attempted = 0.0
+    money_denied = 0.0
+    money_verbs = set()
+    for r in receipts:
+        if not _is_money_verb(r.get("verb", "")):
+            continue
+        amount = _parse_amount(r)
+        if amount is None:
+            continue
+        money_verbs.add(r.get("verb"))
+        money_attempted += amount
+        if r.get("decision") == "DENY":
+            money_denied += amount
+
+    # Unauthorized writes: DENY decisions are writes Writ stopped
+    unauthorized_blocked = denied
+
+    # Period label
+    if not period:
+        if receipts:
+            timestamps = []
+            for r in receipts:
+                try:
+                    timestamps.append(int(r.get("createdAt", 0)))
+                except (TypeError, ValueError):
+                    pass
+            if timestamps:
+                earliest = datetime.fromtimestamp(min(timestamps), tz=timezone.utc)
+                latest = datetime.fromtimestamp(max(timestamps), tz=timezone.utc)
+                if earliest.strftime("%Y-%m") == latest.strftime("%Y-%m"):
+                    period = earliest.strftime("%B %Y")
+                else:
+                    period = f"{earliest.strftime('%b %Y')} – {latest.strftime('%b %Y')}"
+            else:
+                period = "all time"
+        else:
+            period = "all time"
+
+    # Agent label
+    agents = sorted({r.get("agentId", "unknown") for r in receipts})
+    if agent:
+        agent_label = agent
+    elif len(agents) == 1:
+        agent_label = agents[0]
+    elif len(agents) > 1:
+        agent_label = f"{len(agents)} agents"
+    else:
+        agent_label = "—"
+
+    return {
+        "agent": agent_label,
+        "period": period,
+        "total": total,
+        "allowed": allowed,
+        "denied": denied,
+        "stepUp": step_up,
+        "revocations": revoked,
+        "unauthorizedBlocked": unauthorized_blocked,
+        "money": {
+            "verbs": sorted(money_verbs),
+            "attempted": round(money_attempted, 2),
+            "denied": round(money_denied, 2),
+        },
+        "verbs": verbs,
+    }
+
+
+def _fmt_dollars(amount):
+    return f"${amount:,.0f}" if amount == int(amount) else f"${amount:,.2f}"
+
+
+def _render_text(report):
+    lines = []
+    lines.append("Agent Action Report")
+    lines.append(f"Agent: {report['agent']}")
+    lines.append(f"Period: {report['period']}")
+    lines.append("")
+    lines.append(f"{report['total']:,} actions attempted")
+    lines.append(f"{report['allowed']:,} allowed")
+    lines.append(f"{report['denied']:,} denied")
+    if report["stepUp"]:
+        lines.append(f"{report['stepUp']:,} escalated for approval")
+    lines.append("")
+    money = report["money"]
+    if money["attempted"] > 0 or money["verbs"]:
+        verb_word = "refunds" if any("refund" in v for v in money["verbs"]) else "payments"
+        lines.append(f"{_fmt_dollars(money['attempted'])} {verb_word} attempted")
+        lines.append(f"{_fmt_dollars(money['denied'])} denied by policy")
+        lines.append("")
+    lines.append(f"{report['revocations']:,} permission revocations")
+    lines.append(f"{report['unauthorizedBlocked']:,} unauthorized writes blocked")
+    # Per-verb detail
+    if report["verbs"]:
+        lines.append("")
+        lines.append("By verb:")
+        for verb in sorted(report["verbs"]):
+            v = report["verbs"][verb]
+            lines.append(
+                f"  {verb}: {v['attempted']:,} attempted, "
+                f"{v['allowed']:,} allowed, {v['denied']:,} denied"
+            )
+    return "\n".join(lines)
+
+
+def report_cmd(args):
+    """Generate an Agent Action Report from receipts."""
+    if args.file:
+        receipts = _load_receipts_from_file(args.file)
+    elif args.key:
+        receipts = _fetch_receipts_from_api(args.key, agent=args.agent, limit=args.limit)
+    else:
+        print("error: provide --file or --key", file=sys.stderr)
+        sys.exit(2)
+
+    since_ts = None
+    if args.since:
+        try:
+            # Accept YYYY-MM-DD or a unix timestamp
+            if re.match(r"^\d+$", args.since):
+                since_ts = int(args.since)
+            else:
+                dt = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                since_ts = int(dt.timestamp())
+        except ValueError:
+            print(f"error: bad --since value {args.since!r} (use YYYY-MM-DD)", file=sys.stderr)
+            sys.exit(2)
+
+    receipts = _filter_receipts(receipts, agent=args.agent, since_ts=since_ts)
+    report = _build_report(receipts, agent=args.agent, period=args.period)
+
+    if args.format == "json":
+        print(json.dumps(report, indent=2))
+    else:
+        print(_render_text(report))
+    return 0
+
 
 
 
@@ -673,10 +1120,24 @@ def main():
                       help="Write instrumentation into the repo")
     scan.add_argument("--yes", action="store_true",
                       help="Apply without prompting")
+    scan.add_argument("--score", action="store_true",
+                      help="Print only the Writ Score risk report (no diff, no policy file)")
     scan.add_argument("--push-policy", action="store_true",
                       help="PUT the discovered policy to the gate (needs --key)")
     scan.add_argument("--key", default="",
                       help="API key (for --push-policy)")
+
+    report = sub.add_parser("report", help="Agent Action Report from receipts")
+    rsrc = report.add_mutually_exclusive_group(required=True)
+    rsrc.add_argument("--key", help="API key — fetch receipts from the Writ API")
+    rsrc.add_argument("--file", help="Read receipts from a local JSON file (array or JSON-lines)")
+    report.add_argument("--agent", help="Filter to one agent ID")
+    report.add_argument("--since", help="Only receipts after this date (YYYY-MM-DD) or unix timestamp")
+    report.add_argument("--period", help="Period label (e.g. 'September 2026')")
+    report.add_argument("--limit", type=int, default=1000,
+                        help="Max receipts to fetch from API (default 1000)")
+    report.add_argument("--format", choices=("text", "json"), default="text",
+                        help="Output format (default: text)")
 
     args = parser.parse_args()
     if args.cmd == "key":
@@ -730,6 +1191,8 @@ def main():
         return request("POST", "/v1/tokens/verify", payload, key=args.key)
     if args.cmd == "scan":
         return scan_cmd(args)
+    if args.cmd == "report":
+        return report_cmd(args)
     if args.cmd in ("revoke", "reinstate", "revoked"):
         if not args.sponsor_token:
             print("error: sponsor token required (--sponsor-token or WRIT_SPONSOR_TOKEN)", file=sys.stderr)
