@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pywrit"
+version = "0.2.0"
+description = "Python client + CLI for Writ — the gate before the write"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = ["httpx>=0.27"]
+keywords = ["ai-agents", "policy", "audit-log", "guardrails"]
+
+[project.urls]
+Homepage = "https://github.com/AvenueDAdmin/pywrit"
+Documentation = "https://withwrit.com/docs"
+
+[project.scripts]
+writ = "pywrit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
