@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
   issues: write
 
 jobs:
@@ -24,7 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install Python build tools
         run: python -m pip install build twine
@@ -50,9 +50,7 @@ jobs:
       - name: Build and publish writ-scan npm package
         if: hashFiles('npm/package.json') != ''
         working-directory: npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
 
       - name: Move GitHub Action major/minor tags
         if: hashFiles('action.yml') != ''
