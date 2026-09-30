@@ -88,7 +88,5 @@ Try it with no key: `writ_sandbox` → `writ_check` with `verb="demo_write"`.
 
 ## Source
 
-This package is extracted from the private Writ repo's `mcp-server/`, which
-remains the source of truth; behavioral changes land here via sync. Public
-repo: [AvenueDAdmin/pywrit](https://github.com/AvenueDAdmin/pywrit) (`mcp/`
+Public repo: [AvenueDAdmin/pywrit](https://github.com/AvenueDAdmin/pywrit) (`mcp/`
 directory). License: MIT.
