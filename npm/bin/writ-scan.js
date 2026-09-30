@@ -23,7 +23,7 @@
 const { spawnSync } = require("node:child_process");
 
 // Keep in lockstep with the pywrit release this npm version wraps.
-const PYWRIT_VERSION = "0.2.5";
+const PYWRIT_VERSION = require("../package.json").version;
 const PYWRIT_SPEC = process.env.WRIT_PYWRIT_SPEC || `pywrit[polyglot]==${PYWRIT_VERSION}`;
 
 function fail(msg) {
