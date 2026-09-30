@@ -610,6 +610,468 @@ def _apply_edits(lines, edits):
     return out
 
 
+# ---------------------------------------------------------------------------
+# writ scan, TypeScript/JavaScript: deterministic and scan-only (TS/JS files
+# are never rewritten). Parsing needs the optional extra
+# `pip install 'pywrit[polyglot]'` (tree-sitter); without it the scanner
+# prints a one-line hint and keeps going. Rules are data (_TSJS_RULES) so
+# other languages can reuse the same (id, kind, callee patterns, condition)
+# shape.
+# ---------------------------------------------------------------------------
+import re as _re
+import subprocess as _subprocess
+
+_TSJS_EXTS = {".ts": "typescript", ".tsx": "tsx", ".js": "javascript",
+              ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript"}
+_TSJS_SKIP_DIR_NAMES = _SKIP_DIR_NAMES | {".next", "vendor", "venv", ".venv"}
+_TSJS_TEST_DIRS = {"tests", "testing", "__tests__"}
+_TSJS_MAX_BYTES = 1000000  # larger files are almost always bundles
+_TSJS_HINT = ("hint: %d TS/JS file(s) not scanned; install the extra: "
+              "pip install 'pywrit[polyglot]'")
+_TSJS_WRITE_METHODS = {"post", "put", "patch", "delete"}
+_TSJS_SQL_WRITE = _re.compile(
+    r"^\s*\(*\s*(insert|update|delete|drop|alter|truncate|create|replace|"
+    r"merge)\b", _re.I)
+_TSJS_GATE_NAMES = {"writ_check", "_writ_check", "writcheck"}
+
+# import/require source -> canonical callee prefix
+_TSJS_MODULES = {
+    "fs": ("fs",), "fs/promises": ("fs", "promises"), "fs-extra": ("fs",),
+    "graceful-fs": ("fs",), "child_process": ("child_process",),
+    "http": ("http",), "https": ("https",), "axios": ("axios",),
+    "got": ("got",), "ky": ("ky",), "superagent": ("superagent",),
+    "node-fetch": ("fetch",), "cross-fetch": ("fetch",),
+    "isomorphic-fetch": ("fetch",), "knex": ("knex",), "stripe": ("stripe",),
+}
+
+_FS_FNS = ("writeFile", "appendFile", "unlink", "rm", "rmdir", "rename",
+           "mkdir", "copyFile", "cp", "truncate", "symlink")
+_TSJS_FS = "|".join(_FS_FNS + tuple(f + "Sync" for f in _FS_FNS)
+                    + ("createWriteStream",))
+_TSJS_DB_HINTS = "|".join(sorted(_DB_HINTS | {"knex", "trx", "pool"}))
+_TSJS_DB_METHODS = ("insert|update|del|delete|upsert|truncate|save|remove|"
+                    "insertOne|insertMany|updateOne|updateMany|deleteOne|"
+                    "deleteMany|replaceOne|bulkWrite")
+_TSJS_HTTP_HINTS = "|".join(sorted(_HTTP_HINTS | {"httpclient", "$http",
+                                                  "request", "agent"}))
+_TSJS_HTTP_VERBS = "post|put|patch|delete|del"
+
+# (rule id, kind, callee patterns, condition). First match wins.
+# Patterns are dotted callee chains (after import aliasing and dropping a
+# leading `this`): `a|b` alternatives, `*` one segment, `**` any segments.
+# Conditions: None, "method" (a literal write method in an options object
+# or as a leading string arg), "sql" (first arg is a literal SQL write).
+_TSJS_RULES = (
+    ("child-process", "exec",
+     ("child_process.exec|execSync|execFile|execFileSync|spawn|spawnSync|"
+      "fork",), None),
+    ("fs-write", "file",
+     ("fs." + _TSJS_FS, "fs.promises." + _TSJS_FS), None),
+    ("sql-write", "db",
+     ("**.query|execute|raw|exec|run|unsafe|$executeRaw|$executeRawUnsafe|"
+      "$queryRaw|$queryRawUnsafe|sql",), "sql"),
+    ("stripe-write", "sdk",
+     ("stripe.**.create|update|del|cancel|capture|confirm|pay",), None),
+    ("prisma-write", "db",
+     ("prisma.*.create|createMany|update|updateMany|upsert|delete|deleteMany",),
+     None),
+    ("db-write", "db",
+     ("%s.**.%s" % (_TSJS_DB_HINTS, _TSJS_DB_METHODS),
+      "**.%s.%s" % (_TSJS_DB_HINTS, _TSJS_DB_METHODS)), None),
+    ("fetch-write", "http",
+     ("fetch", "window|globalThis|self.fetch"), "method"),
+    ("http-client-write", "http",
+     ("axios|got|ky|superagent.**." + _TSJS_HTTP_VERBS,
+      "**.%s.%s" % (_TSJS_HTTP_HINTS, _TSJS_HTTP_VERBS)), None),
+    ("http-config-write", "http",
+     ("axios|got|ky|superagent", "axios|got|ky.request",
+      "http|https.request"), "method"),
+)
+
+
+def _tsjs_compile(pattern):
+    return tuple(s if s in ("*", "**") else
+                 frozenset(a.lower() for a in s.split("|"))
+                 for s in pattern.split("."))
+
+
+_TSJS_COMPILED = tuple((rid, kind, tuple(_tsjs_compile(p) for p in pats), cond)
+                       for rid, kind, pats, cond in _TSJS_RULES)
+
+
+def _tsjs_glob(segs, chain):
+    if not segs:
+        return not chain
+    s = segs[0]
+    if s == "**":
+        return any(_tsjs_glob(segs[1:], chain[i:])
+                   for i in range(len(chain) + 1))
+    if not chain or (s != "*" and chain[0] not in s):
+        return False
+    return _tsjs_glob(segs[1:], chain[1:])
+
+
+def _tsjs_parsers():
+    """Return {grammar: Parser}, or {} when the polyglot extra is missing."""
+    try:
+        import tree_sitter as ts
+    except ImportError:
+        return {}
+    try:
+        import tree_sitter_typescript as tst
+        import tree_sitter_javascript as tsj
+        fns = {"typescript": tst.language_typescript,
+               "tsx": tst.language_tsx, "javascript": tsj.language}
+    except ImportError:
+        try:
+            from tree_sitter_language_pack import get_language
+        except ImportError:
+            return {}
+        fns = {k: (lambda k=k: get_language(k))
+               for k in ("typescript", "tsx", "javascript")}
+    parsers = {}
+    try:
+        for name, fn in fns.items():
+            lang = fn()
+            if not isinstance(lang, ts.Language):
+                lang = ts.Language(lang)
+            try:
+                parser = ts.Parser(lang)
+            except TypeError:
+                parser = ts.Parser()
+                parser.language = lang
+            parsers[name] = parser
+    except Exception:
+        return {}
+    return parsers
+
+
+def _tsjs_should_skip(path, root, excludes):
+    rel = path.relative_to(root)
+    if any(p in _TSJS_SKIP_DIR_NAMES or p.startswith(".")
+           for p in rel.parts[:-1]):
+        return True
+    if any(p in _TSJS_TEST_DIRS for p in rel.parts[:-1]):
+        return True
+    name = path.name
+    if ".test." in name or ".spec." in name or name.endswith(
+            (".d.ts", ".min.js")):
+        return True
+    s = str(path)
+    return any(e in s for e in excludes)
+
+
+def _tsjs_git_files(root):
+    """Tracked + untracked-not-ignored files under root, or None."""
+    try:
+        out = _subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard",
+             "-z"], stdout=_subprocess.PIPE, stderr=_subprocess.DEVNULL,
+            timeout=60, check=False)
+    except (OSError, _subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    return [r for r in out.stdout.decode("utf-8", "replace").split("\0") if r]
+
+
+def _tsjs_collect_files(root, excludes):
+    rels = _tsjs_git_files(root)
+    if rels is None:
+        rels = []
+        for dp, dns, fns in os.walk(str(root)):
+            dns[:] = [d for d in dns if d not in _TSJS_SKIP_DIR_NAMES
+                      and not d.startswith(".")]
+            rels.extend(os.path.relpath(os.path.join(dp, f), str(root))
+                        for f in fns)
+    out = set()
+    for r in rels:
+        p = root / r
+        if p.suffix in _TSJS_EXTS and not _tsjs_should_skip(p, root, excludes) \
+                and p.is_file():
+            out.add(p)
+    return sorted(out)
+
+
+_TSJS_FUNC_TYPES = {"function_declaration", "generator_function_declaration",
+                    "function_expression", "function", "generator_function",
+                    "arrow_function", "method_definition"}
+_TSJS_CLASS_TYPES = {"class_declaration", "class",
+                     "abstract_class_declaration"}
+_TSJS_UNWRAP = {"parenthesized_expression", "await_expression",
+                "non_null_expression", "as_expression",
+                "satisfies_expression", "type_assertion"}
+
+
+class _TsjsFile:
+    def __init__(self, src):
+        self.src = src
+
+    def text(self, node):
+        return self.src[node.start_byte:node.end_byte].decode("utf-8",
+                                                              "replace")
+
+    def literal(self, node):
+        """String value of a string/template literal node, else None."""
+        if node is None:
+            return None
+        if node.type == "string":
+            return self.text(node)[1:-1]
+        if node.type == "template_string":
+            return self.text(node)[1:-1]  # substitutions stay as ${...}
+        return None
+
+    def chain(self, node):
+        """Dotted callee chain, e.g. knex("t").where().del -> [knex(), where(), del]."""
+        while node is not None and node.type in _TSJS_UNWRAP:
+            kids = node.named_children
+            node = kids[-1] if node.type == "await_expression" and kids \
+                else (kids[0] if kids else None)
+        if node is None:
+            return ["?"]
+        t = node.type
+        if t in ("identifier", "property_identifier",
+                 "private_property_identifier", "shorthand_property_identifier"):
+            return [self.text(node)]
+        if t == "this":
+            return ["this"]
+        if t == "member_expression":
+            prop = node.child_by_field_name("property")
+            return self.chain(node.child_by_field_name("object")) + \
+                [self.text(prop) if prop is not None else "?"]
+        if t == "call_expression":
+            c = self.chain(node.child_by_field_name("function"))
+            c[-1] = c[-1] + "()"
+            return c
+        return ["?"]
+
+
+def _tsjs_func_name(node, f):
+    name = node.child_by_field_name("name")
+    if name is not None and node.type != "arrow_function":
+        return f.text(name)
+    parent = node.parent
+    if parent is None:
+        return None
+    pt = parent.type
+    if pt == "variable_declarator":
+        n = parent.child_by_field_name("name")
+        return f.text(n) if n is not None and n.type == "identifier" else None
+    if pt == "pair":
+        k = parent.child_by_field_name("key")
+        return (f.literal(k) or f.text(k)) if k is not None else None
+    if pt == "assignment_expression":
+        left = parent.child_by_field_name("left")
+        if left is not None and left.type == "member_expression":
+            left = left.child_by_field_name("property")
+        return f.text(left) if left is not None else None
+    if pt in ("public_field_definition", "field_definition"):
+        n = parent.child_by_field_name("name") or \
+            parent.child_by_field_name("property")
+        return f.text(n) if n is not None else None
+    return None
+
+
+def _tsjs_module_prefix(source):
+    if source is None:
+        return None
+    if source.startswith("node:"):
+        source = source[5:]
+    return _TSJS_MODULES.get(source)
+
+
+def _tsjs_record_import(node, f, aliases):
+    src = node.child_by_field_name("source")
+    prefix = _tsjs_module_prefix(f.literal(src))
+    if prefix is None:
+        return
+    for clause in node.named_children:
+        if clause.type != "import_clause":
+            continue
+        for part in clause.named_children:
+            if part.type == "identifier":  # default import
+                aliases[f.text(part)] = prefix
+            elif part.type == "namespace_import":
+                ids = [c for c in part.named_children if c.type == "identifier"]
+                if ids:
+                    aliases[f.text(ids[-1])] = prefix
+            elif part.type == "named_imports":
+                for spec in part.named_children:
+                    if spec.type != "import_specifier":
+                        continue
+                    ids = [c for c in spec.named_children
+                           if c.type in ("identifier", "string")]
+                    if not ids:
+                        continue
+                    imported = f.literal(ids[0]) or f.text(ids[0])
+                    local = f.text(ids[-1])
+                    if imported == "default":
+                        aliases[local] = prefix
+                    else:
+                        aliases[local] = prefix + (imported,)
+
+
+def _tsjs_record_require(node, f, aliases):
+    """const x = require("m") / const {a, b: c} = require("m") / .prop"""
+    value = node.child_by_field_name("value")
+    extra = ()
+    if value is not None and value.type == "member_expression":
+        prop = value.child_by_field_name("property")
+        extra = (f.text(prop),) if prop is not None else ()
+        value = value.child_by_field_name("object")
+    if value is None or value.type != "call_expression":
+        return
+    fn = value.child_by_field_name("function")
+    if fn is None or f.text(fn) != "require":
+        return
+    args = value.child_by_field_name("arguments")
+    first = args.named_children[0] if args is not None and \
+        args.named_children else None
+    prefix = _tsjs_module_prefix(f.literal(first))
+    if prefix is None:
+        return
+    prefix = prefix + extra
+    name = node.child_by_field_name("name")
+    if name is None:
+        return
+    if name.type == "identifier":
+        aliases[f.text(name)] = prefix
+    elif name.type == "object_pattern":
+        for p in name.named_children:
+            if p.type == "shorthand_property_identifier_pattern":
+                aliases[f.text(p)] = prefix + (f.text(p),)
+            elif p.type == "pair_pattern":
+                k = p.child_by_field_name("key")
+                v = p.child_by_field_name("value")
+                if k is not None and v is not None and v.type == "identifier":
+                    aliases[f.text(v)] = prefix + (f.text(k),)
+
+
+def _tsjs_args(call):
+    args = call.child_by_field_name("arguments")
+    if args is None:
+        return []
+    if args.type == "template_string":  # tagged template: sql`...`
+        return [args]
+    return [a for a in args.named_children if a.type != "comment"]
+
+
+def _tsjs_has_write_method(call, f):
+    for a in _tsjs_args(call)[:2]:
+        lit = f.literal(a)
+        if lit is not None and lit.lower() in _TSJS_WRITE_METHODS:
+            return True
+        if a.type != "object":
+            continue
+        for pair in a.named_children:
+            if pair.type != "pair":
+                continue
+            k = pair.child_by_field_name("key")
+            key = (f.literal(k) or f.text(k)) if k is not None else ""
+            if key != "method":
+                continue
+            v = f.literal(pair.child_by_field_name("value"))
+            if v is not None and v.lower() in _TSJS_WRITE_METHODS:
+                return True
+    return False
+
+
+def _tsjs_classify(call, chain, f):
+    for rid, kind, pats, cond in _TSJS_COMPILED:
+        if not any(_tsjs_glob(p, chain) for p in pats):
+            continue
+        if cond == "method" and not _tsjs_has_write_method(call, f):
+            continue
+        if cond == "sql":
+            args = _tsjs_args(call)
+            lit = f.literal(args[0]) if args else None
+            if lit is None or not _TSJS_SQL_WRITE.match(lit):
+                continue
+        return rid, kind
+    return None
+
+
+def _tsjs_scan_source(src, filename, parser):
+    """Return (sites, gated) where sites = [(_WriteSite, rule_id)] and
+    gated = {(func_name, func_line)}. Module-level writes use func ""."""
+    f = _TsjsFile(src)
+    tree = parser.parse(src)
+    aliases, calls, gated = {}, [], set()
+    stack = [(tree.root_node, ("", 0), "")]
+    while stack:
+        node, fkey, cls = stack.pop()
+        t = node.type
+        if t in _TSJS_FUNC_TYPES:
+            name = _tsjs_func_name(node, f)
+            if name:
+                fkey = (name, node.start_point[0] + 1)
+        elif t in _TSJS_CLASS_TYPES:
+            n = node.child_by_field_name("name")
+            cls = f.text(n) if n is not None else cls
+        elif t == "import_statement":
+            _tsjs_record_import(node, f, aliases)
+        elif t == "variable_declarator":
+            _tsjs_record_require(node, f, aliases)
+        elif t == "call_expression":
+            calls.append((node, fkey, cls))
+        stack.extend((c, fkey, cls) for c in reversed(node.children))
+    sites = []
+    for node, fkey, cls in calls:
+        raw = f.chain(node.child_by_field_name("function"))
+        chain = [c[:-2] if c.endswith("()") else c for c in raw]
+        if chain and chain[0] == "this":
+            chain = chain[1:]
+        if chain and chain[0] in aliases:
+            chain = list(aliases[chain[0]]) + chain[1:]
+        chain = [c.lower() for c in chain]
+        if not chain:
+            continue
+        if chain[-1] in _TSJS_GATE_NAMES:
+            gated.add(fkey)
+            continue
+        hit = _tsjs_classify(node, chain, f)
+        if hit:
+            snippet = " ".join(f.text(node).split())[:100]
+            sites.append((_WriteSite(filename, fkey[0], cls,
+                                     node.start_point[0] + 1, hit[1], snippet),
+                          hit[0], fkey))
+    return sites, gated
+
+
+def _tsjs_verb(rel, func_name, cls_name, kind):
+    """infer_verb for TS/JS: camelCase names, `orders.service.ts` -> orders."""
+    snake = _re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", func_name)
+    base = rel.with_name(rel.name.split(".")[0] + rel.suffix)
+    return infer_verb(base, snake, cls_name, kind)
+
+
+def _tsjs_scan(root, excludes):
+    """Return dict with files, skipped, sites, gated, or hint when the
+    extra is missing. Never raises on a bad file."""
+    files = _tsjs_collect_files(root, excludes)
+    res = {"files": files, "skipped": [], "sites": [], "gated": set(),
+           "missing_extra": False}
+    if not files:
+        return res
+    parsers = _tsjs_parsers()
+    if not parsers:
+        res["missing_extra"] = True
+        return res
+    for path in files:
+        try:
+            if path.stat().st_size > _TSJS_MAX_BYTES:
+                res["skipped"].append(str(path))
+                continue
+            src = path.read_bytes()
+            sites, gated = _tsjs_scan_source(
+                src, str(path), parsers[_TSJS_EXTS[path.suffix]])
+        except Exception:
+            res["skipped"].append(str(path))
+            continue
+        res["sites"].extend(sites)
+        res["gated"].update((str(path),) + g for g in gated)
+    return res
+
 def scan_cmd(args):
     import json as _json
     root = _pathlib.Path(args.path).resolve()
@@ -635,6 +1097,14 @@ def scan_cmd(args):
         sites.extend(v.sites)
         gated.update((str(path), n, ln) for (n, ln) in v.gated)
 
+    tsjs = _tsjs_scan(root, args.exclude or [])
+    ts_sites = tsjs["sites"]
+    ts_by_func = {}
+    for s, _rid, fkey in ts_sites:
+        ts_by_func.setdefault((s.file,) + fkey, []).append(s)
+    ts_gated = sum(1 for s, _rid, fkey in ts_sites
+                   if (s.file,) + fkey in tsjs["gated"])
+
     by_func = {}
     for s in sites:
         by_func.setdefault((s.file, s.func, s.cls), []).append(s)
@@ -649,6 +1119,10 @@ def scan_cmd(args):
         rel = _pathlib.Path(f).relative_to(root)
         verbs.setdefault(infer_verb(rel, func_name, cls_name, ss[0].kind),
                          "require_grant")
+    for (f, func_name, _ln), ss in sorted(ts_by_func.items()):
+        rel = _pathlib.Path(f).relative_to(root)
+        verbs.setdefault(_tsjs_verb(rel, func_name, ss[0].cls, ss[0].kind),
+                         "require_grant")
 
     if args.score:
         print_score_report(root, sites, gated_funcs)
@@ -658,6 +1132,22 @@ def scan_cmd(args):
     print("  files scanned: %d  skipped: %d" % (len(files), len(skipped)))
     print("  write sites: %d in %d function(s)" % (total, len(by_func)))
     print("  gated: %d/%d (%d%%)" % (gated_site_count, total, pct))
+    if tsjs["missing_extra"]:
+        print("  " + _TSJS_HINT % len(tsjs["files"]))
+    elif tsjs["files"]:
+        ts_total = len(ts_sites)
+        print("  ts/js files scanned: %d  skipped: %d  (scan only, no --apply)"
+              % (len(tsjs["files"]), len(tsjs["skipped"])))
+        print("  ts/js write sites: %d in %d function(s)"
+              % (ts_total, len(ts_by_func)))
+        print("  ts/js gated: %d/%d (%d%%)" % (
+            ts_gated, ts_total,
+            (100 * ts_gated // ts_total) if ts_total else 100))
+        for s, rid, _fkey in sorted(ts_sites, key=lambda x: (x[0].file,
+                                                             x[0].lineno)):
+            print("    %s:%d [%s] %s %s(): %s" % (
+                _pathlib.Path(s.file).relative_to(root), s.lineno, s.kind,
+                rid, s.func or "<module>", s.snippet))
     if verbs:
         print("  verbs discovered: %d" % len(verbs))
         for vname in sorted(verbs):
@@ -692,7 +1182,11 @@ def scan_cmd(args):
         print("  manual: %s %s() [%s]: %s" % (path, func_name, verb, why))
 
     if not results:
-        print("nothing to instrument.")
+        if ts_sites:
+            print("nothing to instrument (ts/js findings are scan-only; "
+                  "gate them by hand).")
+        else:
+            print("nothing to instrument.")
         return 0
 
     total_gates = sum(r[3] for r in results)

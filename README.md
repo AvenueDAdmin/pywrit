@@ -100,13 +100,25 @@ Python (`.py`) files, parsed with the stdlib `ast` (no extra dependencies):
   calls such as `stripe.Refund.create(...)`, deferred task queues, or shared clients
   several layers down. The risk report lists these gaps every time.
 
-### TypeScript / JavaScript: coming soon (not yet released)
+### TypeScript / JavaScript (scan-only)
 
-> **Not available in `pywrit` 0.2.2 or on PyPI yet.** The current release scans
-> Python only. The preview below shows scan-only TS/JS support that is still in
-> development; the command it uses is not available yet.
+`writ scan` also finds write sites in TypeScript and JavaScript. It needs the
+optional extra (tree-sitter based):
 
-![Preview, not yet released: writ scan on a TypeScript agent finds 5 write sites, 1 of 5 gated](https://raw.githubusercontent.com/AvenueDAdmin/pywrit/main/docs/assets/scan-tsjs.gif)
+    pip install 'pywrit[polyglot]'
+    writ scan .
+
+Without the extra, the scanner prints a one-line hint and keeps going —
+Python scanning never needs it.
+
+TS/JS is **scan-only**: findings are listed with verbs for your policy file,
+but `writ scan --apply` never rewrites TS/JS files — gate those by hand.
+Covered patterns: `fetch`/`axios` writes, `fs` writes, SQL through knex-style
+clients, Prisma writes, and JS SDK calls such as `stripe.refunds.create(...)`.
+(Still not covered: the *Python* SDK equivalents like `stripe.Refund.create(...)`
+— see "Not covered" above.)
+
+![writ scan on a TypeScript agent finds 5 write sites, 1 of 5 gated](https://raw.githubusercontent.com/AvenueDAdmin/pywrit/main/docs/assets/scan-tsjs.gif)
 
 ## Python client
 
