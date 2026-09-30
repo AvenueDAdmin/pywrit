@@ -141,7 +141,7 @@ job summary. The check fails when an ungated finding meets your
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: AvenueDAdmin/pywrit@v1
+- uses: AvenueDAdmin/pywrit@v0
   with:
     fail-on-risk: high   # high | medium | low | never
 ```

@@ -4,7 +4,7 @@
 # check when an ungated finding meets or exceeds `fail-on-risk`.
 #
 # Usage:
-#   - uses: AvenueDAdmin/pywrit@v1
+#   - uses: AvenueDAdmin/pywrit@v0
 #     with:
 #       fail-on-risk: high
 

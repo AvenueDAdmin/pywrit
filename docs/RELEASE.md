@@ -25,7 +25,7 @@ publish half:
 1. **PyPI** — builds and uploads `pywrit` (and `writ-mcp` once it exists).
 2. **npm** — publishes `writ-scan` (once it exists; `--access public`).
 3. **GitHub Action tags** — force-moves `vX` and `vX.Y` to the new tag, so
-   `uses: AvenueDAdmin/pywrit@v1` always tracks the latest `v1.x.y`.
+    `uses: AvenueDAdmin/pywrit@v0` always tracks the latest `v0.x.y`.
    (GitHub Marketplace listing is automatic on release — no separate step.)
 4. **Checklist issue** — opens a `release` issue from
    `.github/RELEASE_CHECKLIST.md` for the manual channels.

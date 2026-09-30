@@ -32,7 +32,7 @@ jobs:
       - name: Build and publish pywrit
         run: |
           python -m build
-          twine upload dist/*
+          twine upload --skip-existing dist/*
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
@@ -42,7 +42,7 @@ jobs:
         working-directory: mcp
         run: |
           python -m build
-          twine upload dist/*
+          twine upload --skip-existing dist/*
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
