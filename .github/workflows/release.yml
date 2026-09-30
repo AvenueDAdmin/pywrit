@@ -50,6 +50,19 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
+      - name: Verify npm/OIDC state before publish
+        run: |
+          echo "=== npm version ==="
+          npm --version
+          echo "=== npm path ==="
+          which npm
+          echo "=== NODE_AUTH_TOKEN set? ==="
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then echo "unset/empty"; else echo "set"; fi
+          echo "=== ACTIONS_ID_TOKEN_REQUEST_TOKEN present? ==="
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then echo "MISSING"; else echo "present"; fi
+          echo "=== ACTIONS_ID_TOKEN_REQUEST_URL ==="
+          echo "${ACTIONS_ID_TOKEN_REQUEST_URL}"
+
       - name: Build and publish writ-scan npm package
         if: hashFiles('npm/package.json') != ''
         working-directory: npm
