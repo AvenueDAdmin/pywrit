@@ -183,6 +183,32 @@ writ grant --sponsor acme --agent agent-7 --verb payments.refund \
 Sponsor-token commands (`revoke`, `reinstate`, `revoked`, `grant`) read
 `--sponsor-token` or `WRIT_SPONSOR_TOKEN`. Run `writ --help` for the full command list.
 
+## README badge
+
+Show that your agent's writes are gated by Writ. Two flavors:
+
+**Static** (works today, no API key) — same design, no live count:
+
+```md
+[![agent writes gated by Writ](https://cdn.jsdelivr.net/gh/AvenueDAdmin/pywrit@main/badge/writ-gated.svg)](https://withwrit.com)
+```
+
+**Dynamic** (live 30-day gated-write count from your audit log) — mint a badge
+token, then embed the snippet the API returns:
+
+```bash
+curl -s https://api.withwrit.com/v1/badge/tokens \
+  -H "Authorization: Bearer writ_..." \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+The dynamic endpoint ships with the gate — until it's live, `POST /v1/badge/tokens`
+returns 404 and the static badge above is the one to use.
+
+See [`badge/`](badge/) for embed docs and the verification model (what the
+badge proves — and what it doesn't).
+
 ## Docs
 
 Full docs: [docs.withwrit.com](https://docs.withwrit.com) ·
