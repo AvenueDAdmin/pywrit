@@ -1,0 +1,5 @@
+pywrit>=0.2.5
+langgraph>=1.0
+langchain-core>=0.3
+httpx>=0.27
+pytest>=8.0
