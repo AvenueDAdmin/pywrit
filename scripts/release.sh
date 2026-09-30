@@ -117,7 +117,9 @@ EOF
 
 PY_PKGS=()
 if [[ -f "pyproject.toml" ]]; then PY_PKGS+=("."); fi
-if [[ -f "writ-mcp/pyproject.toml" ]]; then PY_PKGS+=("writ-mcp"); fi
+for cand in "writ-mcp" "mcp"; do
+  if [[ -f "$cand/pyproject.toml" ]]; then PY_PKGS+=("$cand"); fi
+done
 
 if [[ "$SKIP_PYPI" == "0" ]]; then
   for d in "${PY_PKGS[@]:-}"; do
@@ -137,7 +139,7 @@ else
 fi
 
 NPM_DIR=""
-for cand in "npm/writ-scan" "writ-scan"; do
+for cand in "npm/writ-scan" "writ-scan" "npm"; do
   if [[ -f "$cand/package.json" ]]; then NPM_DIR="$cand"; break; fi
 done
 if [[ "$SKIP_NPM" == "0" ]]; then

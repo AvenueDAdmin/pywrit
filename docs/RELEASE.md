@@ -14,8 +14,8 @@ One release tag pushes everywhere. The whole flow:
 
 1. Validates the tag (`vX.Y.Z`) and that it doesn't already exist.
 2. Stamps the version into every artifact's version file:
-   `pyproject.toml` + `__init__.py` (`pywrit`), `writ-mcp/pyproject.toml`
-   (when the extraction lands), `npm/writ-scan/package.json` (when it lands).
+   `pyproject.toml` + `__init__.py` (`pywrit`), `mcp/pyproject.toml`
+   (when the extraction lands), `npm/package.json` (when it lands).
 3. Build-checks each package locally (skips gracefully if a build tool is missing).
 4. Commits, tags (`git tag -a vX.Y.Z`), pushes the branch and the tag.
 
@@ -36,8 +36,8 @@ covers them the moment they land, no workflow edits needed. Expected layout:
 | Artifact       | Detected at                                              |
 |----------------|----------------------------------------------------------|
 | `pywrit`       | `./pyproject.toml`                                       |
-| `writ-mcp`     | `writ-mcp/pyproject.toml`                                |
-| `writ-scan`    | `npm/writ-scan/package.json` (or `writ-scan/package.json`) |
+| `writ-mcp`     | `mcp/pyproject.toml` (or `writ-mcp/pyproject.toml`)      |
+| `writ-scan`    | `npm/package.json` (or `npm/writ-scan/package.json`)     |
 | GitHub Action  | `action.yml`, `action/action.yml`, or `github-action/action.yml` |
 
 ## Secrets to configure (one time)

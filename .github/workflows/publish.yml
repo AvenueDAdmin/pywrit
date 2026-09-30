@@ -1,9 +1,7 @@
-name: Publish pywrit to PyPI
+name: Publish pywrit to PyPI (legacy — superseded by release.yml)
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-n-publish:
