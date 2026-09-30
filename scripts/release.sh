@@ -129,7 +129,7 @@ if [[ "$SKIP_PYPI" == "0" ]]; then
     # stamp every __init__.py carrying __version__ under the package src tree
     while IFS= read -r init; do
       stamp_init_version "$init" "$VER"
-    done < <(grep -rl '__version__' "$d/src" 2>/dev/null || true)
+    done < <(find "$d/src" -name '__init__.py' -exec grep -l '__version__' {} + 2>/dev/null || true)
   done
   if [[ "${#PY_PKGS[@]}" -eq 0 ]]; then
     echo "--> no Python packages found (skipped)"
