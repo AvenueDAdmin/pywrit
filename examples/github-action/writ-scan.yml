@@ -1,0 +1,32 @@
+# Example: run the Writ scan on every pull request.
+#
+# Copy this file to `.github/workflows/writ-scan.yml` in your repo.
+# Findings appear as check annotations on the PR (file/line), plus a
+# Markdown risk report in the job summary. The check fails when an
+# ungated write site meets the `fail-on-risk` threshold (default: high).
+#
+# No API key needed — the scanner is free and runs locally in the job.
+
+name: Writ scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  writ-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for ungated writes
+        uses: AvenueDAdmin/pywrit@v1
+        with:
+          fail-on-risk: high # high | medium | low | never
+          # path: src/          # scan a subdirectory instead of the whole repo
+          # exclude: "migrations, fixtures"  # skip paths containing these
+          # polyglot: "true"    # also scan TypeScript/JavaScript (default)
