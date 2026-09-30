@@ -1,0 +1,93 @@
+# writ-scan — scan a pull request for ungated write sites.
+#
+# Posts each ungated write as a check annotation (file/line) and fails the
+# check when an ungated finding meets or exceeds `fail-on-risk`.
+#
+# Usage:
+#   - uses: AvenueDAdmin/pywrit@v1
+#     with:
+#       fail-on-risk: high
+
+name: "Writ scan"
+description: >-
+  Scan the repo for ungated write sites, post them as check annotations,
+  and fail the check when an ungated finding meets the risk threshold.
+author: "Writ"
+
+branding:
+  icon: "shield"
+  color: "yellow"
+
+inputs:
+  fail-on-risk:
+    description: >-
+      Fail the check when an ungated write site is at or above this risk
+      tier: high, medium, low, or never.
+    required: false
+    default: "high"
+  path:
+    description: >-
+      Repo-relative path to scan (default: the whole repo).
+    required: false
+    default: "."
+  exclude:
+    description: >-
+      Comma- or newline-separated path substrings to skip (e.g. "migrations, fixtures").
+    required: false
+    default: ""
+  version:
+    description: >-
+      pywrit version to install (default: latest from PyPI).
+    required: false
+    default: ""
+  polyglot:
+    description: >-
+      Install pywrit with the polyglot extra for TypeScript/JavaScript
+      scanning (default: true).
+    required: false
+    default: "true"
+  python-version:
+    description: >-
+      Python version for the scan step (default: 3.x).
+    required: false
+    default: "3.x"
+
+outputs:
+  ungated-high:
+    description: "Number of ungated high-risk write sites found."
+  ungated-medium:
+    description: "Number of ungated medium-risk write sites found."
+  ungated-low:
+    description: "Number of ungated low-risk write sites found."
+  failed:
+    description: "true when the risk threshold was breached."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install pywrit scanner
+      shell: bash
+      run: |
+        if [ "${{ inputs.polyglot }}" = "true" ]; then
+          SPEC="pywrit[polyglot]"
+        else
+          SPEC="pywrit"
+        fi
+        if [ -n "${{ inputs.version }}" ]; then
+          SPEC="$SPEC==${{ inputs.version }}"
+        fi
+        python -m pip install --quiet "$SPEC"
+        python -c "import pywrit; print('pywrit', pywrit.__version__)"
+
+    - name: Scan for ungated writes
+      shell: bash
+      env:
+        WRIT_FAIL_ON_RISK: ${{ inputs.fail-on-risk }}
+        WRIT_SCAN_PATH: ${{ inputs.path }}
+        WRIT_EXCLUDE: ${{ inputs.exclude }}
+      run: python "${{ github.action_path }}/scripts/writ_action.py"

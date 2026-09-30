@@ -132,6 +132,23 @@ clients, Prisma writes, and JS SDK calls such as `stripe.refunds.create(...)`.
 
 ![writ scan on a TypeScript agent finds 5 write sites, 1 of 5 gated](https://raw.githubusercontent.com/AvenueDAdmin/pywrit/main/docs/assets/scan-tsjs.gif)
 
+## GitHub Action
+
+Scan every pull request for ungated write sites. Findings land as check
+annotations on the exact file and line, plus a Markdown risk report in the
+job summary. The check fails when an ungated finding meets your
+`fail-on-risk` threshold (default: `high`).
+
+```yaml
+- uses: actions/checkout@v4
+- uses: AvenueDAdmin/pywrit@v1
+  with:
+    fail-on-risk: high   # high | medium | low | never
+```
+
+No API key needed. Full reference: [docs/github-action.md](docs/github-action.md) ·
+example workflow: [examples/github-action/writ-scan.yml](examples/github-action/writ-scan.yml)
+
 ## Python client
 
 ```python

@@ -1072,6 +1072,68 @@ def _tsjs_scan(root, excludes):
         res["gated"].update((str(path),) + g for g in gated)
     return res
 
+# ---------------------------------------------------------------------------
+# writ scan --format json: machine-readable risk report for CI (GitHub Action,
+# editor integrations). Pure read-only: prints one JSON document to stdout.
+# ---------------------------------------------------------------------------
+_RISK_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def _scan_findings_json(root, sites, gated_funcs, tsjs, ts_sites):
+    """Return the findings list for `writ scan --format json`.
+
+    Each finding is a dict with file (repo-relative, posix), line, function,
+    verb, risk tier, gated flag, kind, language, and a short snippet.
+    """
+    findings = []
+    for s in sites:
+        rel = _pathlib.Path(s.file).relative_to(root)
+        verb = infer_verb(rel, s.func, s.cls, s.kind)
+        findings.append({
+            "file": rel.as_posix(),
+            "line": s.lineno,
+            "function": s.func or "<module>",
+            "verb": verb,
+            "risk": _risk_tier(verb),
+            "gated": (s.file, s.func) in gated_funcs,
+            "kind": s.kind,
+            "language": "python",
+            "snippet": (s.snippet or "")[:200],
+        })
+    for s, _rid, fkey in ts_sites:
+        rel = _pathlib.Path(s.file).relative_to(root)
+        verb = _tsjs_verb(rel, fkey[0], s.cls, s.kind)
+        findings.append({
+            "file": rel.as_posix(),
+            "line": s.lineno,
+            "function": fkey[0] or "<module>",
+            "verb": verb,
+            "risk": _risk_tier(verb),
+            "gated": (s.file,) + fkey in tsjs["gated"],
+            "kind": s.kind,
+            "language": "tsjs",
+            "snippet": (s.snippet or "")[:200],
+        })
+    findings.sort(key=lambda f: (_RISK_ORDER[f["risk"]], f["file"], f["line"]))
+    return findings
+
+
+def print_scan_json(root, files, skipped, sites, gated_funcs, tsjs, ts_sites):
+    """Print the machine-readable scan report. Read-only: no files written."""
+    from . import __version__
+    doc = {
+        "scanner": "pywrit",
+        "version": __version__,
+        "root": str(root),
+        "files_scanned": len(files) + len(tsjs.get("files", [])),
+        "files_skipped": len(skipped) + len(tsjs.get("skipped", [])),
+        "tsjs_hint": bool(tsjs.get("missing_extra")),
+        "findings": _scan_findings_json(root, sites, gated_funcs, tsjs,
+                                        ts_sites),
+    }
+    print(json.dumps(doc, indent=2))
+
+
 def scan_cmd(args):
     import json as _json
     root = _pathlib.Path(args.path).resolve()
@@ -1113,6 +1175,13 @@ def scan_cmd(args):
     gated_site_count = sum(1 for s in sites if (s.file, s.func) in gated_funcs)
     total = len(sites)
     pct = (100 * gated_site_count // total) if total else 100
+
+    if getattr(args, "format", "text") == "json":
+        # Machine-readable risk report for CI. Read-only: no policy file,
+        # no diffs, no prompts.
+        print_scan_json(root, files, skipped, sites, gated_funcs, tsjs,
+                        ts_sites)
+        return 0
 
     verbs = {}
     for (f, func_name, cls_name), ss in sorted(by_func.items()):
@@ -1601,6 +1670,10 @@ def main():
                       help="Apply without prompting")
     scan.add_argument("--score", action="store_true",
                       help="Print only the Writ Score risk report (no diff, no policy file)")
+    scan.add_argument("--format", choices=("text", "json"), default="text",
+                      help="Output format: human-readable text (default) or "
+                           "machine-readable JSON risk report (read-only; no "
+                           "policy file, no diffs)")
     scan.add_argument("--push-policy", action="store_true",
                       help="PUT the discovered policy to the gate (needs --key)")
     scan.add_argument("--key", default="",
