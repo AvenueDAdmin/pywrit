@@ -1,0 +1,78 @@
+name: Release pywrit, writ-mcp, writ-scan, and Action tags
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install Python build tools
+        run: python -m pip install build twine
+
+      - name: Build and publish pywrit
+        run: |
+          python -m build
+          twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Build and publish writ-mcp
+        if: hashFiles('mcp/pyproject.toml') != ''
+        working-directory: mcp
+        run: |
+          python -m build
+          twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Build and publish writ-scan npm package
+        if: hashFiles('npm/package.json') != ''
+        working-directory: npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Move GitHub Action major/minor tags
+        if: hashFiles('action.yml') != ''
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          MAJOR="v${VERSION%%.*}"
+          MINOR="v$(echo "$VERSION" | cut -d. -f1-2)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin --tags
+          for TAG in "$MAJOR" "$MINOR"; do
+            git tag -fa "$TAG" "$GITHUB_REF_NAME" -m "Release $TAG pointing to $GITHUB_REF_NAME"
+            git push -f origin "$TAG"
+          done
+
+      - name: Open release checklist issue
+        if: hashFiles('.github/RELEASE_CHECKLIST.md') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          sed "s/__VERSION__/${VERSION}/g" .github/RELEASE_CHECKLIST.md > /tmp/checklist.md
+          gh issue create --title "Release checklist: ${VERSION}" --body-file /tmp/checklist.md --label release || true
