@@ -46,7 +46,7 @@ Repo settings → Settings → Secrets and variables → Actions → New reposit
 
 | Secret           | Used by        | How to create it |
 |------------------|----------------|------------------|
-| `PYPI_API_TOKEN` | PyPI publish   | pypi.org → Account settings → API tokens → create a token scoped to the `pywrit` project (add `writ-mcp` scope once that project exists). Paste the whole token, including the `pypi-` prefix. |
+| `PYPI_API_TOKEN` | PyPI publish   | pypi.org → Account settings → API tokens → create a token scoped to **both** the `pywrit` and `writ-mcp` projects (or an account-scoped token). Paste the whole token, including the `pypi-` prefix. |
 | `NPM_TOKEN`      | npm publish    | npmjs.com → Access Tokens → Generate New Token → **Automation** type, with publish rights on `writ-scan`. |
 
 `GITHUB_TOKEN` is provided automatically by Actions; the workflow's
