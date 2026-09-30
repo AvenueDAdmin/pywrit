@@ -52,6 +52,9 @@ jobs:
         if: hashFiles('npm/package.json') != ''
         working-directory: npm
         run: npm publish --access public --provenance
+        env:
+          # Intentionally empty: force npm to authenticate via OIDC provenance.
+          NODE_AUTH_TOKEN: ""
 
       - name: Move GitHub Action major/minor tags
         if: hashFiles('action.yml') != ''
