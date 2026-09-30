@@ -62,7 +62,7 @@ jobs:
           MINOR="v$(echo "$VERSION" | cut -d. -f1-2)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin --tags
+          git fetch origin --tags --force
           for TAG in "$MAJOR" "$MINOR"; do
             git tag -fa "$TAG" "$GITHUB_REF_NAME" -m "Release $TAG pointing to $GITHUB_REF_NAME"
             git push -f origin "$TAG"
