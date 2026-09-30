@@ -25,24 +25,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install npm CLI with trusted publishing support
         run: npm install -g npm@"^11.5.1"
-
-      - name: Debug OIDC and npm auth state
-        run: |
-          echo "=== OIDC request URL ==="
-          echo "${ACTIONS_ID_TOKEN_REQUEST_URL}"
-          echo "=== Mint OIDC token ==="
-          curl -s -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}" | jq . | sed 's/"value": "[^"]*"/"value": "REDACTED"/g' || echo "OIDC mint failed"
-          echo "=== active .npmrc ==="
-          cat "${NPM_CONFIG_USERCONFIG}" 2>/dev/null | sed 's/_authToken=.*/_authToken=REDACTED/g' || echo "no npmrc"
-          echo "=== npm auth config ==="
-          npm config list 2>/dev/null | grep -i auth | sed 's/_authToken=.*/_authToken=REDACTED/g' || true
-          echo "=== auth token env vars ==="
-          env | grep -i auth_token | sed 's/=.*$/=REDACTED/g' || true
 
       - name: Install Python build tools
         run: python -m pip install build twine
@@ -69,11 +54,10 @@ jobs:
         if: hashFiles('npm/package.json') != ''
         working-directory: npm
         # Trusted publishing (OIDC) — npm CLI 11.5.1+ / Node 22.14+.
-        # NODE_AUTH_TOKEN is unset and any setup-node _authToken line is removed
-        # so npm uses OIDC instead of legacy token auth.
+        # No registry-url means setup-node doesn't write an _authToken line.
+        # NODE_AUTH_TOKEN is unset so npm exchanges the GitHub OIDC token.
         run: |
           unset NODE_AUTH_TOKEN
-          npm config delete //registry.npmjs.org/:_authToken || true
           npm publish --access public
 
       - name: Move GitHub Action major/minor tags
