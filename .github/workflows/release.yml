@@ -24,7 +24,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install Python build tools
@@ -51,10 +51,9 @@ jobs:
       - name: Build and publish writ-scan npm package
         if: hashFiles('npm/package.json') != ''
         working-directory: npm
-        run: npm publish --access public --provenance
-        env:
-          # Intentionally empty: force npm to authenticate via OIDC provenance.
-          NODE_AUTH_TOKEN: ""
+        # Trusted publishing (OIDC) — npm CLI 11.5.1+ / Node 22.14+.
+        # No token env; provenance is generated automatically.
+        run: npm publish --access public
 
       - name: Move GitHub Action major/minor tags
         if: hashFiles('action.yml') != ''
