@@ -121,15 +121,20 @@ for cand in "writ-mcp" "mcp"; do
   if [[ -f "$cand/pyproject.toml" ]]; then PY_PKGS+=("$cand"); fi
 done
 
+STAMPED_PY_PKGS=(".")
 if [[ "$SKIP_PYPI" == "0" ]]; then
-  for d in "${PY_PKGS[@]:-}"; do
-    [[ -n "${d:-}" ]] || continue
+  for d in "${STAMPED_PY_PKGS[@]}"; do
+    if [[ ! -f "$d/pyproject.toml" ]]; then continue; fi
     echo "--> stamping $d to $VER"
     stamp_pyproject "$d/pyproject.toml" "$VER"
     # stamp every __init__.py carrying __version__ under the package src tree
     while IFS= read -r init; do
       stamp_init_version "$init" "$VER"
     done < <(find "$d/src" -name '__init__.py' -exec grep -l '__version__' {} + 2>/dev/null || true)
+  done
+  for d in "${PY_PKGS[@]:-}"; do
+    [[ -n "${d:-}" ]] || continue
+    echo "--> building $d later (version left as-is)"
   done
   if [[ "${#PY_PKGS[@]}" -eq 0 ]]; then
     echo "--> no Python packages found (skipped)"
@@ -154,7 +159,7 @@ json.dump(data, open(path, "w"), indent=2)
 open(path, "a").write("\n")
 EOF
   else
-    echo "--> no npm package found (looked in npm/writ-scan, writ-scan; skipped)"
+    echo "--> no npm package found (looked in npm/writ-scan, writ-scan, npm; skipped)"
   fi
 else
   echo "--> --skip-npm: npm package untouched"
@@ -180,8 +185,8 @@ check() { # $1 = file, $2 = expected version string
     echo "    MISMATCH: $1 does not contain version $VER" >&2; fail=1
   fi
 }
-for d in "${PY_PKGS[@]:-}"; do
-  [[ -n "${d:-}" ]] || continue
+for d in "${STAMPED_PY_PKGS[@]}"; do
+  if [[ ! -f "$d/pyproject.toml" ]]; then continue; fi
   check "$d/pyproject.toml" "$VER"
 done
 [[ -n "$NPM_DIR" ]] && check "$NPM_DIR/package.json" "$VER"
