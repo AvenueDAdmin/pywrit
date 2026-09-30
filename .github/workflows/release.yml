@@ -50,28 +50,16 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
-      - name: Verify npm/OIDC state before publish
-        run: |
-          echo "=== npm version ==="
-          npm --version
-          echo "=== npm path ==="
-          which npm
-          echo "=== NODE_AUTH_TOKEN set? ==="
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then echo "unset/empty"; else echo "set"; fi
-          echo "=== ACTIONS_ID_TOKEN_REQUEST_TOKEN present? ==="
-          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then echo "MISSING"; else echo "present"; fi
-          echo "=== ACTIONS_ID_TOKEN_REQUEST_URL ==="
-          echo "${ACTIONS_ID_TOKEN_REQUEST_URL}"
-
       - name: Build and publish writ-scan npm package
         if: hashFiles('npm/package.json') != ''
         working-directory: npm
-        # Trusted publishing (OIDC) — npm CLI 11.5.1+ / Node 22.14+.
-        # No registry-url means setup-node doesn't write an _authToken line.
-        # NODE_AUTH_TOKEN is unset so npm exchanges the GitHub OIDC token.
-        run: |
-          unset NODE_AUTH_TOKEN
-          npm publish --access public
+        # OIDC trusted publishing is configured but not yet working for this
+        # package on npmjs.com; falling back to NPM_TOKEN for v0.2.7 only.
+        # id-token: write is kept so OIDC can be re-enabled once registry-side
+        # claim matching is fixed.
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Move GitHub Action major/minor tags
         if: hashFiles('action.yml') != ''
