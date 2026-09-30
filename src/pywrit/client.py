@@ -15,7 +15,7 @@ from .errors import (
     WritError,
 )
 
-DEFAULT_BASE_URL = "https://j72ckh66ukck2kcbq3oiwxaalm0olxwb.lambda-url.us-east-1.on.aws"
+DEFAULT_BASE_URL = "https://api.withwrit.com"
 
 
 @dataclass
