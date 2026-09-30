@@ -19,3 +19,7 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+
+# Node / npm (writ-scan package)
+node_modules/
+*.tgz
