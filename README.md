@@ -1,13 +1,112 @@
 # pywrit
 
-Python client + CLI for [Writ](https://withwrit.com) — the gate before the write.
-Put a policy gate in front of your agent's dangerous actions.
+**Find the dangerous writes in your Python agent's code, then gate it.** `pywrit` is the Python
+client and `writ` CLI for [Writ](https://withwrit.com): an allow/deny gate that sits
+in front of your agent's consequential writes (database, HTTP, files, email, queues,
+AWS) and records a hash-chained receipt for every decision.
+
+![writ scan finds 4 write sites in a Python agent (0/4 gated); writ scan --apply inserts gates; a re-scan shows 4/4 gated](https://raw.githubusercontent.com/AvenueDAdmin/pywrit/main/docs/assets/scan-python.gif)
+
+`writ scan` is **local, deterministic, and free**: it parses your code with Python's
+`ast` module, makes no network calls, and needs no API key.
 
 ## Install
 
 ```bash
 pip install pywrit
 ```
+
+Requires Python 3.9+. Installs the `writ` command and the `pywrit` Python client.
+
+## 60-second quickstart: scan → apply → gate
+
+**1. Scan.** See which functions write, and how many of them are gated.
+
+```bash
+writ scan .
+```
+
+```text
+writ scan: /path/to/support-agent
+  files scanned: 4  skipped: 0
+  write sites: 4 in 3 function(s)
+  gated: 0/4 (0%)
+  verbs discovered: 3
+    crm.update
+    payments.refund
+    tickets.close
+```
+
+It also prints a **risk report** (0-100, weighted by risk tier), writes the discovered
+verbs to `writ-policy.json`, and shows the instrumentation it would add as a unified
+diff. Nothing in your code changes yet. `writ scan . --score` prints just the risk report.
+
+**2. Apply.** Insert a gate at the top of each writing function.
+
+```bash
+writ scan . --apply        # shows the diff, then asks before writing
+writ scan . --apply --yes  # no prompt (e.g. in CI)
+```
+
+Each gated function now asks Writ before it writes, and fails closed:
+
+```python
+def issue_refund(charge_id, amount_cents):
+    if _writ_check("payments.refund") != "ALLOW":
+        raise PermissionError("writ denied payments.refund")
+    ...
+```
+
+Re-run `writ scan .` and you'll see `gated: 4/4 (100%)`.
+
+**3. Gate.** Get a free API key, load the discovered policy, and run your agent.
+
+```bash
+writ key --email you@example.com                  # free API key + tenant
+export WRIT_API_KEY=writ_...                      # read by the inserted gate
+export WRIT_SPONSOR=acme WRIT_AGENT=support-agent # optional: who is acting
+writ scan . --push-policy --key "$WRIT_API_KEY"   # upload the discovered verb policy
+```
+
+Every gated write now gets `ALLOW`, `DENY`, or `STEP_UP` (a human sponsor must
+approve), and every decision is written to your tenant's tamper-evident audit log:
+
+```bash
+writ receipts --key "$WRIT_API_KEY"       # latest receipts
+writ verify-chain --key "$WRIT_API_KEY"   # verify the receipt hash chain
+writ stream --key "$WRIT_API_KEY"         # tail decisions live
+writ report --key "$WRIT_API_KEY"         # Agent Action Report
+```
+
+## What `writ scan` detects
+
+Python (`.py`) files, parsed with the stdlib `ast` (no extra dependencies):
+
+| Category | Examples |
+|---|---|
+| Database | `cursor.execute(...)` / `executemany` / `executescript` (write SQL only; `SELECT`/`WITH`/... skipped), `session.add` / `commit` / `delete` / `merge` / `flush` |
+| HTTP | `requests.post` / `put` / `patch`, `client.delete(...)`, `session.request(...)` |
+| Files | `open(..., "w"/"a"/"x"/"+")`, `Path.write_text` / `write_bytes` / `unlink` / `rename`, `os.remove` / `rename` / `makedirs`, `shutil.rmtree` / `move` / `copy` |
+| Email | `sendmail`, `send_message`, `send_email` |
+| Queues | `publish`, `produce`, `enqueue`, `queue.send(...)` |
+| AWS SDK | `put_object`, `put_item`, `delete_item`, `upload_file`, `send_message`, `start_execution`, ... |
+
+- Each write is mapped to a verb such as `payments.refund` or `crm.update`, inferred
+  from the file path and function name.
+- A function that already calls `writ_check(...)` / `_writ_check(...)` counts as gated.
+- Skipped: tests, hidden directories, virtualenvs, `node_modules`, `dist`, `build`.
+  Use `--exclude SUBSTR` (repeatable) to skip more.
+- Not covered (review by hand): writes behind dynamically built SQL, third-party SDK
+  calls such as `stripe.Refund.create(...)`, deferred task queues, or shared clients
+  several layers down. The risk report lists these gaps every time.
+
+### TypeScript / JavaScript: coming soon (not yet released)
+
+> **Not available in `pywrit` 0.2.2 or on PyPI yet.** The current release scans
+> Python only. The preview below shows scan-only TS/JS support that is still in
+> development; the command it uses is not available yet.
+
+![Preview, not yet released: writ scan on a TypeScript agent finds 5 write sites, 1 of 5 gated](https://raw.githubusercontent.com/AvenueDAdmin/pywrit/main/docs/assets/scan-tsjs.gif)
 
 ## Python client
 
@@ -48,35 +147,35 @@ client.sandbox({
 })
 ```
 
-### What's covered
+What's covered:
 
-- `check(...)` — the gate: `ALLOW` / `DENY` / `STEP_UP`, plus a receipt every time
-- `verify_token(...)` — validate an `ALLOW` auth token (catches purpose drift)
-- `grant(...)` — human-sponsor approval for the `STEP_UP` path
-- `get_policy()` / `set_policy(...)` — manage the tenant policy
-- `revoke(...)` / `reinstate(...)` / `revoked()` — the kill switch
-- `receipts()` / `receipt(id)` / `verify_chain()` / `stream_receipts()` — the audit log
-- `sandbox(...)` — keyless trial, no API key required
+- `check(...)`: the gate. `ALLOW` / `DENY` / `STEP_UP`, plus a receipt every time
+- `verify_token(...)`: validate an `ALLOW` auth token (catches purpose drift)
+- `grant(...)`: human-sponsor approval for the `STEP_UP` path
+- `get_policy()` / `set_policy(...)`: manage the tenant policy
+- `revoke(...)` / `reinstate(...)` / `revoked()`: the kill switch
+- `receipts()` / `receipt(id)` / `verify_chain()` / `stream_receipts()`: the audit log
+- `sandbox(...)`: keyless trial, no API key required
 
-Every decision writes a receipt, so the audit log is the meter.
-
-## CLI
-
-The same package ships the `writ` command:
+## CLI reference
 
 ```bash
 writ check --key writ_... --sponsor acme --agent agent-7 \
   --verb db.write --target prod.customers --purpose "backfill region field"
-writ scan ./my-repo
-writ receipts --key writ_...
-writ verify-chain --key writ_...
+writ policy --key writ_... --set payments.refund require_grant
+writ revoke --sponsor acme --agent agent-7 --reason "runaway loop"   # kill switch (sponsor token)
+writ grant --sponsor acme --agent agent-7 --verb payments.refund \
+  --target ch_123 --purpose "approved refund"                        # STEP_UP approval (sponsor token)
 ```
 
-Run `writ --help` for the full command list.
+Sponsor-token commands (`revoke`, `reinstate`, `revoked`, `grant`) read
+`--sponsor-token` or `WRIT_SPONSOR_TOKEN`. Run `writ --help` for the full command list.
 
 ## Docs
 
-Full API reference: [withwrit.com/docs](https://withwrit.com/docs)
+Full docs: [docs.withwrit.com](https://docs.withwrit.com) ·
+Quickstart: [docs.withwrit.com/quickstart](https://docs.withwrit.com/quickstart) ·
+Site: [withwrit.com](https://withwrit.com)
 
 ## License
 
