@@ -732,21 +732,6 @@ MONEY_VERB_PATTERNS = (
 )
 
 
-def request(method, path, payload=None, key=None, token=None):
-    headers = {"content-type": "application/json"}
-    if key:
-        headers["authorization"] = "Bearer " + key
-    elif token:
-        headers["authorization"] = token
-    data = None if payload is None else json.dumps(payload).encode()
-    req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            return 0, resp.read().decode()
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode()
-
-
 # ---------------------------------------------------------------------------
 # Agent Action Report
 # ---------------------------------------------------------------------------
