@@ -7,7 +7,7 @@ name = "writ-mcp"
 version = "0.1.0"
 description = "Writ MCP server — commit-time policy checks for AI agents (ALLOW/DENY/STEP_UP + audit receipts)"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.9"
 dependencies = [
     "mcp>=1.0,<2",
