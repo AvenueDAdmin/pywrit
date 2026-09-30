@@ -18,6 +18,18 @@ pip install pywrit
 
 Requires Python 3.9+. Installs the `writ` command and the `pywrit` Python client.
 
+**JavaScript/TypeScript devs:** run the scanner with no Python setup via npm:
+
+```bash
+npx writ-scan .
+```
+
+The `writ-scan` package wraps the same scanner (including TS/JS support). On
+first run it installs `pywrit[polyglot]` from PyPI using your Python 3.9+
+(one-time); afterwards it starts instantly. See [`npm/`](npm/) for details,
+environment overrides (`WRIT_PYTHON`, `WRIT_SCAN_NO_INSTALL`), and the
+install test.
+
 ## 60-second quickstart: scan → apply → gate
 
 **1. Scan.** See which functions write, and how many of them are gated.
