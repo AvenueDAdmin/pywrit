@@ -1,6 +1,6 @@
 # pywrit
 
-**Find every write your AI agent can make, then gate it.** `pywrit` is the Python
+**Find the dangerous writes in your Python agent's code, then gate it.** `pywrit` is the Python
 client and `writ` CLI for [Writ](https://withwrit.com): an allow/deny gate that sits
 in front of your agent's consequential writes (database, HTTP, files, email, queues,
 AWS) and records a hash-chained receipt for every decision.
@@ -37,9 +37,9 @@ writ scan: /path/to/support-agent
     tickets.close
 ```
 
-It also prints a **Writ Score** (0-100, weighted by risk tier), writes the discovered
+It also prints a **risk report** (0-100, weighted by risk tier), writes the discovered
 verbs to `writ-policy.json`, and shows the instrumentation it would add as a unified
-diff. Nothing in your code changes yet. `writ scan . --score` prints just the score report.
+diff. Nothing in your code changes yet. `writ scan . --score` prints just the risk report.
 
 **2. Apply.** Insert a gate at the top of each writing function.
 
@@ -96,9 +96,9 @@ Python (`.py`) files, parsed with the stdlib `ast` (no extra dependencies):
 - A function that already calls `writ_check(...)` / `_writ_check(...)` counts as gated.
 - Skipped: tests, hidden directories, virtualenvs, `node_modules`, `dist`, `build`.
   Use `--exclude SUBSTR` (repeatable) to skip more.
-- Not covered (review by hand): writes behind dynamically built SQL, generic
-  wrappers, deferred task queues, or shared clients several layers down. The
-  score report lists these gaps every time.
+- Not covered (review by hand): writes behind dynamically built SQL, third-party SDK
+  calls such as `stripe.Refund.create(...)`, deferred task queues, or shared clients
+  several layers down. The risk report lists these gaps every time.
 
 ### TypeScript / JavaScript: coming soon (not yet released)
 
