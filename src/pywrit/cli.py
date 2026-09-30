@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 BASE = os.environ.get(
     "WRIT_BASE",
-    "https://j72ckh66ukck2kcbq3oiwxaalm0olxwb.lambda-url.us-east-1.on.aws",
+    "https://api.withwrit.com",
 )
 
 
@@ -99,7 +99,7 @@ import urllib.request as _writ_urllib
 
 _WRIT_BASE = _writ_os.environ.get(
     "WRIT_BASE",
-    "https://j72ckh66ukck2kcbq3oiwxaalm0olxwb.lambda-url.us-east-1.on.aws",
+    "https://api.withwrit.com",
 )
 _WRIT_KEY = _writ_os.environ.get("WRIT_API_KEY", "")
 _WRIT_SPONSOR = _writ_os.environ.get("WRIT_SPONSOR", "app")
