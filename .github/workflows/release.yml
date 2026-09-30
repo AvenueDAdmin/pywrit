@@ -25,7 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install npm CLI with trusted publishing support
         run: npm install -g npm@"^11.5.1"
@@ -56,12 +55,13 @@ jobs:
         working-directory: npm
         # OIDC trusted publishing is configured but not yet working for this
         # package on npmjs.com; falling back to NPM_TOKEN for v0.2.7 only.
-        # setup-node writes the token into ~/.npmrc from the NPM_TOKEN secret.
-        # NODE_AUTH_TOKEN is blanked so npm reads the .npmrc entry instead of
-        # the env var, while id-token: write is kept for a future OIDC switch.
-        run: npm publish --access public
+        # id-token: write is kept so OIDC can be re-enabled once registry-side
+        # claim matching is fixed.
+        run: |
+          printf 'registry=https://registry.npmjs.org/\n//registry.npmjs.org/:_authToken=%s\n' "${NPM_TOKEN}" > .npmrc
+          npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ""
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Move GitHub Action major/minor tags
         if: hashFiles('action.yml') != ''
