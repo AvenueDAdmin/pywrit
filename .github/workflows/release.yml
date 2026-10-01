@@ -85,3 +85,61 @@ jobs:
           VERSION=${GITHUB_REF_NAME}
           sed "s/__VERSION__/${VERSION}/g" .github/RELEASE_CHECKLIST.md > /tmp/checklist.md
           gh issue create --title "Release checklist: ${VERSION}" --body-file /tmp/checklist.md --label release || true
+
+  smithery:
+    name: Publish writ-mcp bundle to Smithery
+    needs: release
+    runs-on: ubuntu-latest
+    if: hashFiles('mcp/pyproject.toml') != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install writ-mcp from source
+        run: python -m pip install ./mcp
+
+      - name: Wait for PyPI to serve the new version
+        # The Smithery scanner pip-installs writ-mcp==VERSION at deploy time,
+        # so the release job's twine upload must be visible first.
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          for i in $(seq 1 60); do
+            SEEN=$(python -c "
+          import json, urllib.request
+          try:
+              data = json.load(urllib.request.urlopen('https://pypi.org/pypi/writ-mcp/json', timeout=15))
+              print(' '.join(data['releases'].keys()))
+          except Exception:
+              print('')
+          " 2>/dev/null)
+            case " $SEEN " in
+              *" $VERSION "*) echo "writ-mcp $VERSION is live on PyPI"; exit 0 ;;
+            esac
+            echo "waiting for writ-mcp $VERSION on PyPI (attempt $i/60)..."
+            sleep 20
+          done
+          echo "::error::writ-mcp $VERSION never appeared on PyPI"
+          exit 1
+
+      - name: Build the .mcpb bundle
+        run: python .github/smithery/build_mcpb.py
+        env:
+          WRIT_MCP_VERSION: ${{ github.ref_name }}
+
+      - name: Check Smithery API key
+        run: |
+          if [ -z "$SMITHERY_API_KEY" ]; then
+            echo "::error::SMITHERY_API_KEY repo secret is not set. Add it at withwrit/pywrit → Settings → Secrets and variables → Actions → New repository secret (value: a Smithery API key from smithery.ai/account/api-keys)."
+            exit 1
+          fi
+        env:
+          SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
+
+      - name: Publish to Smithery
+        run: npx -y @smithery/cli@4.11.1 mcp publish ./writ-mcp.mcpb -n withwrit/writ-mcp
+        env:
+          SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
