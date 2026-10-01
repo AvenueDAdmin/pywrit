@@ -211,8 +211,19 @@ def open_awesome_pr():
         print(f"punkpeye PR for Writ already open: #{existing}")
         return
 
+    # punkpeye README entry format — all three are enforced by repo bots:
+    #   * name-check:  full `owner/repo` as the link text
+    #   * glama-check: Glama score badge right after the repo link
+    #                  (the server must be listed on Glama for it to resolve;
+    #                   submit at https://glama.ai/mcp/servers if missing)
+    #   * emoji-check: at least one permitted emoji after the link
+    #                  (python stdio server, runs locally)
     bullet = (
-        f"- [writ]({REPO_URL}) - "
+        f"- [withwrit/pywrit]({REPO_URL}) "
+        "[![withwrit/writ-mcp MCP server]"
+        "(https://glama.ai/mcp/servers/withwrit/writ-mcp/badges/score.svg)]"
+        "(https://glama.ai/mcp/servers/withwrit/writ-mcp) "
+        "🐍 🏠 - "
         "Commit-time policy checks for AI agent writes (ALLOW/DENY/STEP_UP) "
         "with a tamper-evident audit log. 8 tools via `uvx writ-mcp`.\n\n"
     )
@@ -226,9 +237,13 @@ def open_awesome_pr():
 
         readme_path = dest / "README.md"
         text = readme_path.read_text()
+        # Insert as the first entry UNDER the Security header. (The previous
+        # code prepended the bullet before the header line, which landed the
+        # entry at the end of the preceding section — the first PR ended up
+        # under Research instead of Security.)
         new_text, subs = re.subn(
-            r"^(###\s*🔒\s*<a name=\"security\"></a>Security\n)",
-            bullet + r"\1",
+            r"^(###\s*🔒\s*<a name=\"security\"></a>Security)\n",
+            r"\1\n" + bullet,
             text,
             count=1,
             flags=re.MULTILINE,
@@ -247,7 +262,7 @@ def open_awesome_pr():
             "--base", "main", "--head", f"{AWESOME_FORK.split('/')[0]}:{branch}",
             "--title", "Add writ MCP server",
             "--body", (
-                f"Add [writ]({REPO_URL}) to the Security section.\n\n"
+                f"Add [withwrit/pywrit]({REPO_URL}) to the Security section.\n\n"
                 "- Commit-time policy checks for AI agent writes (ALLOW/DENY/STEP_UP) "
                 "with a tamper-evident audit log.\n"
                 "- 8 tools via `uvx writ-mcp`.\n"

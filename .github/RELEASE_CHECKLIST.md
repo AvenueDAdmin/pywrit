@@ -17,6 +17,8 @@ everywhere automated. These are the manual channels — check each box as done.
 ## Manual channels / verification
 - [ ] **Hermes optional-mcps catalog** — verify the auto-opened PR merged
 - [ ] **punkpeye/awesome-mcp-servers** — verify the auto-opened PR merged
+      (the entry carries a Glama score badge — the server must be listed at
+      glama.ai/mcp/servers for the badge to resolve; submit there if missing)
 - [ ] **mcpservers.org** — one-time listing; verify badge is in the README
 - [ ] **Docs** — update install/version references in the public docs
       (quickstart, changelog). Docs ship with the release per repo convention.
