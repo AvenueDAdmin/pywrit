@@ -1,0 +1,26 @@
+name: Open MCP catalog PRs
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-prs:
+    name: Open catalog PRs for writ-mcp ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Open catalog PRs
+        env:
+          GH_TOKEN: ${{ secrets.CATALOG_PR_TOKEN }}
+        run: python3 .github/scripts/open_catalog_prs.py

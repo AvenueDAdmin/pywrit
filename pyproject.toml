@@ -22,7 +22,7 @@ polyglot = [
 keywords = ["ai-agents", "policy", "audit-log", "guardrails"]
 
 [project.urls]
-Homepage = "https://github.com/AvenueDAdmin/pywrit"
+Homepage = "https://github.com/withwrit/pywrit"
 Documentation = "https://withwrit.com/docs"
 
 [project.scripts]

@@ -5,7 +5,7 @@ agent commit-time control: the agent calls Writ **before** a consequential
 write, gets back `ALLOW`, `DENY`, or `STEP_UP`, and every outcome creates an
 audit receipt.
 
-<!-- mcp-name: io.github.AvenueDAdmin/writ -->
+<!-- mcp-name: io.github.withwrit/writ -->
 
 ## Install
 
@@ -90,5 +90,5 @@ Try it with no key: `writ_sandbox` → `writ_check` with `verb="demo_write"`.
 
 ## Source
 
-Public repo: [AvenueDAdmin/pywrit](https://github.com/AvenueDAdmin/pywrit) (`mcp/`
+Public repo: [withwrit/pywrit](https://github.com/withwrit/pywrit) (`mcp/`
 directory). License: MIT.
