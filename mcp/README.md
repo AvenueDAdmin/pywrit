@@ -5,7 +5,7 @@ agent commit-time control: the agent calls Writ **before** a consequential
 write, gets back `ALLOW`, `DENY`, or `STEP_UP`, and every outcome creates an
 audit receipt.
 
-<!-- mcp-name: io.github.avenuedadmin/writ -->
+<!-- mcp-name: io.github.AvenueDAdmin/writ -->
 
 ## Install
 
