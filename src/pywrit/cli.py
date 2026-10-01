@@ -141,9 +141,16 @@ _DB_HINTED = {"save", "update", "delete", "add", "remove", "commit", "insert"}
 _DB_HINTS = {"db", "session", "conn", "connection", "cursor", "engine",
              "store", "collection", "table", "model", "query", "tx",
              "transaction", "repository", "repo", "dal"}
-_HTTP_BARE = {"post", "put", "patch"}
-_HTTP_HINTED = {"delete", "request"}
-_HTTP_HINTS = {"requests", "session", "client", "http", "api", "rest"}
+# Receivers that are definitely NOT ORM model instances for .save() / .delete()
+_ORM_NON_HINTS = {"client", "requests", "session", "http", "api", "rest",
+                  "httpx", "response", "resp", "file", "f", "fh", "path",
+                  "p", "os", "shutil", "sys", "json", "dict", "list", "obj",
+                  "object", "data", "item", "config", "settings", "app", "ctx",
+                  "self", "cls", "result", "results", "doc", "document"}
+_HTTP_BARE = {"post", "put", "patch", "delete"}
+_HTTP_HINTED = {"request"}
+_HTTP_HINTS = {"requests", "session", "client", "http", "api", "rest",
+               "httpx", "httpxclient"}
 _PATH_METHODS = {"write_text", "write_bytes", "unlink", "mkdir", "rmdir",
                  "rename", "replace", "touch", "symlink_to", "hardlink_to"}
 _OS_WRITES = {"remove", "unlink", "rename", "replace", "mkdir", "makedirs",
@@ -157,7 +164,46 @@ _QUEUE_HINTS = {"queue", "topic", "channel", "bus", "stream", "kafka",
                 "redis", "sqs", "pubsub", "mq", "exchange"}
 _AWS_METHODS = {"put_object", "put_item", "delete_item", "delete_object",
                 "send_message", "publish", "upload_file", "upload_fileobj",
-                "send_email", "start_execution", "put_metric_data"}
+                "send_email", "start_execution", "put_metric_data",
+                "copy_object", "delete_table", "create_table", "update_item"}
+_PAYMENTS_METHODS = {"create", "modify", "cancel", "confirm", "capture",
+                     "pay", "send", "refund"}
+_PAYMENTS_HINTS = {"stripe", "paypal", "braintree", "square"}
+_SMS_METHODS = {"create"}
+_SMS_HINTS = {"twilio", "messages", "sms"}
+_SLACK_METHODS = {"chat_postmessage", "chat_postephemeral",
+                  "chat_update", "chat_delete"}
+_WEBHOOK_HINTS = {"slack", "discord", "teams"}
+_PUSH_METHODS = {"send", "send_all", "send_multicast",
+                 "subscribe_to_topic", "unsubscribe_from_topic"}
+_ALERT_METHODS = {"send_alert", "create_event", "create_incident"}
+_ALERT_HINTS = {"pagerduty", "opsgenie", "pd", "alert"}
+_SUBPROCESS_METHODS = {"run", "call", "Popen"}
+_OS_SHELL_METHODS = {"system", "popen",
+                     "execv", "execve", "execvp", "execvpe",
+                     "execl", "execle", "execlp",
+                     "spawnl", "spawnle", "spawnlp", "spawnlpe",
+                     "spawnv", "spawnve", "spawnvp", "spawnvpe"}
+_URLWRITE_METHODS = {"urlopen", "request"}
+_K8S_HINTS = {"k8s", "kubernetes", "api", "v1", "apps_v1",
+              "core_v1_api", "apps_v1_api"}
+_GITHUB_METHODS = {"create_issue", "create_pull", "create_pull_request",
+                   "merge", "merge_pull_request", "create_comment",
+                   "create_repo", "create_repository"}
+_REDIS_METHODS = {"set", "setex", "delete", "hset", "hmset", "hsetnx",
+                  "lpush", "rpush", "sadd", "srem", "zadd", "zrem",
+                  "incr", "decr", "incrby", "append"}
+_REDIS_HINTS = {"redis", "r", "cache"}
+_MONGODB_METHODS = {"insert_one", "insert_many", "update_one", "update_many",
+                    "delete_one", "delete_many", "replace_one",
+                    "find_one_and_update", "find_one_and_replace",
+                    "find_one_and_delete"}
+_FIRESTORE_METHODS = {"set", "update", "delete"}
+_FIRESTORE_HINTS = {"doc", "document", "docs", "ref"}
+_DOCKER_METHODS = {"run", "create", "start", "stop", "kill", "remove",
+                   "remove_container", "exec_run", "commit"}
+_FTP_STOR = {"storbinary", "storlines"}
+_WEB3_METHODS = {"send_transaction", "transact"}
 
 _ACTION_SYNONYMS = {
     "create": "create", "add": "create", "insert": "create",
@@ -182,7 +228,29 @@ _GENERIC_PREFIXES = {"issue", "process", "handle", "do", "run", "perform",
                      "execute", "make", "get", "fetch",
                      "is", "has", "are", "was", "were", "check"}
 _KIND_FALLBACK_ACTION = {"db": "write", "http": "call", "file": "write",
-                         "email": "send", "queue": "publish", "aws": "write"}
+                         "email": "send", "queue": "publish", "aws": "write",
+                         "payments": "charge", "sms": "send", "shell": "execute",
+                         "k8s": "deploy", "github": "create", "push": "send",
+                         "crypto": "send", "docker": "run", "ftp": "upload",
+                         "alert": "send"}
+_KIND_TIER = {"db": "medium", "http": "medium", "file": "low",
+              "email": "medium", "queue": "medium", "aws": "high",
+              "payments": "high", "sms": "medium", "shell": "high",
+              "k8s": "high", "github": "medium", "push": "medium",
+              "crypto": "high", "docker": "high", "ftp": "low",
+              "alert": "medium"}
+_TIER_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def _tier_for(site_kind, verb):
+    """Return the higher-risk tier between the kind's base tier and the
+    verb-inferred tier."""
+    kind_tier = _KIND_TIER.get(site_kind, "low")
+    verb_tier = _risk_tier(verb)
+    return kind_tier if _TIER_ORDER[kind_tier] <= _TIER_ORDER[verb_tier] \
+        else verb_tier
+
+
 _SKIP_DIRS = {"src", "app", "lib", "api", "v1", "v2", "server", "services",
               "models", "routes", "handlers", "controllers", "actions",
               "core", "common", "utils", "util", "pkg", "internal"}
@@ -246,40 +314,160 @@ def _open_is_write(node):
     return isinstance(mode, str) and any(c in mode for c in "wax+")
 
 
+def _call_chain(func):
+    """Dotted callee chain as lowercase strings, root first."""
+    chain = []
+    while isinstance(func, _ast.Attribute):
+        chain.append(func.attr)
+        func = func.value
+    if isinstance(func, _ast.Name):
+        chain.append(func.id)
+    chain.reverse()
+    return [c.lower() for c in chain]
+
+
+def _has_shell_kwarg(node):
+    """True if the call has shell=True."""
+    for kw in node.keywords:
+        if kw.arg != "shell":
+            continue
+        if isinstance(kw.value, _ast.Constant) and kw.value.value is True:
+            return True
+        if getattr(kw.value, "value", None) is True:
+            return True
+    return False
+
+
 def _classify_call(node):
     func = node.func
     if isinstance(func, _ast.Name) and func.id == "open":
         return "file" if _open_is_write(node) else None
     if not isinstance(func, _ast.Attribute):
         return None
-    name = func.attr
-    recv = _recv_name(func)
-    root = _root_name(func)
+    chain = _call_chain(func)
+    if not chain:
+        return None
+    name = chain[-1]
+    recv = chain[-2] if len(chain) > 1 else ""
+    root = chain[0]
+
+    # Shell / command execution
+    if root == "subprocess" and name in _SUBPROCESS_METHODS:
+        if _has_shell_kwarg(node):
+            return "shell"
+    if root == "os" and name in _OS_SHELL_METHODS:
+        return "shell"
+    if name == "exec_command" and (root == "paramiko"
+                                     or recv in ("ssh", "channel", "chan")):
+        return "shell"
+
+    # Filesystem
     if root == "os" and name in _OS_WRITES:
         return "file"
     if root == "shutil" and name in _SHUTIL_WRITES:
         return "file"
     if name in _PATH_METHODS:
         return "file"
+
+    # Email
     if name in _EMAIL_METHODS:
         return "email"
+    # SendGrid sg.client.mail.send.post()
+    if name == "post" and "mail" in chain and "send" in chain:
+        return "email"
+
+    # AWS
     if name in _AWS_METHODS:
         return "aws"
+
+    # Payments (Stripe, PayPal, Braintree, Square)
+    if root in _PAYMENTS_HINTS and name in _PAYMENTS_METHODS:
+        return "payments"
+
+    # Twilio / SMS
+    if name in _SMS_METHODS and (recv in _SMS_HINTS or root in _SMS_HINTS):
+        return "sms"
+
+    # Slack SDK and generic webhook variables (reuse http)
+    if name in _SLACK_METHODS:
+        return "http"
+    if root in _WEBHOOK_HINTS and name in _HTTP_BARE:
+        return "http"
+
+    # Kubernetes
+    if any(name.startswith(p) for p in ("create_namespaced_",
+                                          "delete_namespaced_",
+                                          "patch_namespaced_",
+                                          "replace_namespaced_")):
+        return "k8s"
+    if (root in _K8S_HINTS or any(c in _K8S_HINTS for c in chain)) and \
+            name in ("create", "delete", "patch", "replace", "apply"):
+        return "k8s"
+
+    # GitHub API
+    if name in _GITHUB_METHODS or root == "github":
+        return "github"
+
+    # Push providers (Firebase / FCM)
+    if name in _PUSH_METHODS and (recv in ("messaging", "fcm")
+                                  or root in ("fcm", "firebase")):
+        return "push"
+
+    # Data stores
+    if name in _REDIS_METHODS and (recv in _REDIS_HINTS or root in _REDIS_HINTS):
+        return "db"
+    if name in _MONGODB_METHODS:
+        return "db"
+    if name in _FIRESTORE_METHODS and (recv in _FIRESTORE_HINTS
+                                         or root in _FIRESTORE_HINTS):
+        return "db"
+
+    # HTTP clients (checked before generic .save() / .delete() so
+    # httpx.delete, urllib.request.urlopen, etc. are not mis-classified).
+    if name in _HTTP_BARE:
+        return "http"
+    if name in _HTTP_HINTED and (recv in _HTTP_HINTS or root in _HTTP_HINTS):
+        return "http"
+    if name in _URLWRITE_METHODS and root in ("urllib", "request", "urllib2"):
+        return "http"
+
+    # Databases / ORM
     if name in _DB_BARE:
         if name in ("execute", "executemany", "executescript") \
                 and not _sql_is_write(node):
             return None
         return "db"
     if name in _DB_HINTED:
-        return "db" if recv in _DB_HINTS else None
-    if name in _HTTP_BARE:
-        return "http"
-    if name in _HTTP_HINTED and recv in _HTTP_HINTS:
-        return "http"
+        if recv in _DB_HINTS:
+            return "db"
+        # Django/model instance heuristic: .save() / .delete()
+        if name in ("save", "delete") and recv not in _ORM_NON_HINTS:
+            return "db"
+        return None
+
+    # Queue
     if name in _QUEUE_BARE:
         return "queue"
-    if name in _QUEUE_HINTED and recv in _QUEUE_HINTS:
+    if name in _QUEUE_HINTED and (recv in _QUEUE_HINTS or root in _QUEUE_HINTS):
         return "queue"
+
+    # Crypto / web3
+    if name in _WEB3_METHODS and (root in ("w3", "web3")
+                                  or "contract" in chain):
+        return "crypto"
+
+    # Docker SDK
+    if (root == "docker" or "containers" in chain) and name in _DOCKER_METHODS:
+        return "docker"
+
+    # FTP uploads
+    if name in _FTP_STOR:
+        return "ftp"
+
+    # PagerDuty / Opsgenie alerts
+    if name in _ALERT_METHODS and (recv in _ALERT_HINTS or root in _ALERT_HINTS):
+        return "alert"
+
     return None
 
 
@@ -426,32 +614,38 @@ def _risk_tier(verb):
 
 
 def _score_report_rows(root, sites, gated_funcs):
-    """Return (rows, n_gated, total) for the score report.
+    """Return rows for the score report.
 
     rows: list of (tier, verb, rel_path, lineno, protected), sorted by
     tier severity then path. A site is protected when its function already
-    has a gate call.
+    has a gate call. Tier is the higher of the kind-based tier and the
+    verb-inference tier.
     """
     rows = []
     for s in sites:
         rel = _pathlib.Path(s.file).relative_to(root)
         verb = infer_verb(rel, s.func, s.cls, s.kind)
-        rows.append((_risk_tier(verb), verb, str(rel), s.lineno,
-                     (s.file, s.func) in gated_funcs))
-    order = {"high": 0, "medium": 1, "low": 2}
-    rows.sort(key=lambda r: (order[r[0]], r[2], r[3]))
+        rows.append((_tier_for(s.kind, verb), verb, str(rel),
+                     s.lineno, (s.file, s.func) in gated_funcs))
+    rows.sort(key=lambda r: (_TIER_ORDER[r[0]], r[2], r[3]))
     return rows
 
 
 def _writ_score(rows):
-    """0-100 from unprotected sites: -10 high, -5 medium, -2 low."""
+    """0-100 from unprotected sites: -10 high / -5 medium / -2 low.
+
+    Returns None when there are no gradable writes so the report can be
+    honest about an unscored repo instead of printing a fake 100.
+    """
+    if not rows:
+        return None
     penalty = sum({"high": 10, "medium": 5, "low": 2}[tier]
                   for tier, _, _, _, protected in rows if not protected)
     return max(0, 100 - penalty)
 
 
 def print_score_report(root, sites, gated_funcs):
-    """Print the Writ Score block. Pure read-only: no files written."""
+    """Print the risk report and Writ Score. Pure read-only: no files written."""
     rows = _score_report_rows(root, sites, gated_funcs)
     total = len(rows)
     score = _writ_score(rows)
@@ -459,7 +653,12 @@ def print_score_report(root, sites, gated_funcs):
     pct = (100 * n_gated // total) if total else 100
 
     print()
-    print("Writ Score: %d/100" % score)
+    if score is None:
+        print("Writ Score: N/A")
+        print("  No gradable Python writes were found.")
+        print("  The numeric score applies only to Python write sites the scanner can grade.")
+    else:
+        print("Writ Score: %d/100" % score)
     print()
     if not total:
         print("No write operations discovered.")
@@ -486,8 +685,6 @@ def print_score_report(root, sites, gated_funcs):
     for gap in _SCORE_GAPS:
         print("  - %s" % gap)
     print()
-    print("Scanner is free forever -- no API key needed to scan.")
-    print("Fix this with Writ: pip install pywrit && writ scan --apply")
     return score
 
 
@@ -1094,7 +1291,7 @@ def _scan_findings_json(root, sites, gated_funcs, tsjs, ts_sites):
             "line": s.lineno,
             "function": s.func or "<module>",
             "verb": verb,
-            "risk": _risk_tier(verb),
+            "risk": _tier_for(s.kind, verb),
             "gated": (s.file, s.func) in gated_funcs,
             "kind": s.kind,
             "language": "python",
