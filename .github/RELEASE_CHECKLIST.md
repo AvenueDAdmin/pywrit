@@ -7,6 +7,8 @@ everywhere automated. These are the manual channels — check each box as done.
 - [x] Python packages published to PyPI (`pywrit`, plus `writ-mcp` if present)
 - [x] npm package published (`writ-scan`, if present)
 - [x] GitHub Action `vX` / `vX.Y` tags moved (if the Action exists in-repo)
+- [x] Smithery bundle published (`withwrit/writ-mcp`, if `mcp/` exists) —
+      requires the `SMITHERY_API_KEY` repo secret; the job fails loudly if unset
 
 ## Manual channels
 - [ ] **Hermes optional-mcps catalog** — bump the `writ-mcp` version in the
