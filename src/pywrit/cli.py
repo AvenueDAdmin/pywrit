@@ -1331,14 +1331,13 @@ def print_scan_json(root, files, skipped, sites, gated_funcs, tsjs, ts_sites):
     print(json.dumps(doc, indent=2))
 
 
-def scan_cmd(args):
-    import json as _json
-    root = _pathlib.Path(args.path).resolve()
-    if not root.is_dir():
-        print("error: not a directory: %s" % args.path, file=sys.stderr)
-        return 2
-    files = _collect_files(root, args.exclude or [])
+def _scan_repo(root, excludes):
+    """Collect Python and TS/JS files and find write sites.
 
+    Returns (files, skipped, sites, gated, tsjs). This is the read-only
+    detection pass reused by both `writ scan` and `writ wrap`.
+    """
+    files = _collect_files(root, excludes or [])
     sites, gated, skipped = [], set(), []
     for path in files:
         try:
@@ -1356,7 +1355,16 @@ def scan_cmd(args):
         sites.extend(v.sites)
         gated.update((str(path), n, ln) for (n, ln) in v.gated)
 
-    tsjs = _tsjs_scan(root, args.exclude or [])
+    tsjs = _tsjs_scan(root, excludes or [])
+    return files, skipped, sites, gated, tsjs
+
+
+def _analyze_scan(root, files, skipped, sites, gated, tsjs):
+    """Derive counts, the verb map, and gated totals from a scan.
+
+    Returns a dict with everything scan_cmd and wrap_cmd need to print
+    reports, build diffs, and write policy.
+    """
     ts_sites = tsjs["sites"]
     ts_by_func = {}
     for s, _rid, fkey in ts_sites:
@@ -1368,17 +1376,9 @@ def scan_cmd(args):
     for s in sites:
         by_func.setdefault((s.file, s.func, s.cls), []).append(s)
     gated_funcs = {(f, n) for (f, n, ln) in gated}
-    # a site is gated if its function has a gate call; match by file+name
     gated_site_count = sum(1 for s in sites if (s.file, s.func) in gated_funcs)
     total = len(sites)
     pct = (100 * gated_site_count // total) if total else 100
-
-    if getattr(args, "format", "text") == "json":
-        # Machine-readable risk report for CI. Read-only: no policy file,
-        # no diffs, no prompts.
-        print_scan_json(root, files, skipped, sites, gated_funcs, tsjs,
-                        ts_sites)
-        return 0
 
     verbs = {}
     for (f, func_name, cls_name), ss in sorted(by_func.items()):
@@ -1389,6 +1389,105 @@ def scan_cmd(args):
         rel = _pathlib.Path(f).relative_to(root)
         verbs.setdefault(_tsjs_verb(rel, func_name, ss[0].cls, ss[0].kind),
                          "require_grant")
+
+    return {
+        "files": files,
+        "skipped": skipped,
+        "sites": sites,
+        "gated": gated,
+        "tsjs": tsjs,
+        "ts_sites": ts_sites,
+        "ts_by_func": ts_by_func,
+        "ts_gated": ts_gated,
+        "by_func": by_func,
+        "gated_funcs": gated_funcs,
+        "gated_site_count": gated_site_count,
+        "total": total,
+        "pct": pct,
+        "verbs": verbs,
+    }
+
+
+def _build_instrumentation_plan(root, sites, gated, gated_funcs):
+    """Generate the instrumentation diff for each file that needs gating.
+
+    Returns (results, manuals, total_gates). Each result is
+    (path, old_lines, new_lines, n_gates, rel_path).
+    """
+    results = []
+    manuals = []
+    for path in sorted({s.file for s in sites}):
+        src = _pathlib.Path(path).read_text(encoding="utf-8")
+        rel = _pathlib.Path(path).relative_to(root)
+        gated_here = {(n, ln) for (f, n, ln) in gated if f == path}
+        edits, _, n_gates, manual = _build_edits(
+            path, rel, src, [s for s in sites if s.file == path], gated_here)
+        manuals.extend((path, m[0], m[1], m[2]) for m in manual)
+        if not edits:
+            continue
+        old_lines = src.splitlines(keepends=True)
+        new_lines = _apply_edits(old_lines, edits)
+        results.append((path, old_lines, new_lines, n_gates, rel))
+    total_gates = sum(r[3] for r in results)
+    return results, manuals, total_gates
+
+
+def _print_unified_diff(results):
+    """Print the unified diff for an instrumentation plan."""
+    for path, old_lines, new_lines, _n_gates, rel in results:
+        diff = "".join(_difflib.unified_diff(
+            old_lines, new_lines,
+            fromfile="a/" + str(rel), tofile="b/" + str(rel)))
+        print(diff, end="")
+
+
+def _write_policy(path, verbs, merge_existing=True):
+    """Write or update a writ-policy.json file.
+
+    If merge_existing is True and the file exists, new inferred verbs are
+    added with mode "require_grant" without overwriting existing values.
+    """
+    import json as _json
+    existing = {}
+    if merge_existing and path.exists():
+        try:
+            existing = _json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                existing = {}
+        except (OSError, ValueError, _json.JSONDecodeError):
+            existing = {}
+    merged = dict(existing)
+    for verb, mode in verbs.items():
+        merged.setdefault(verb, mode)
+    path.write_text(_json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+
+
+def scan_cmd(args):
+    import json as _json
+    root = _pathlib.Path(args.path).resolve()
+    if not root.is_dir():
+        print("error: not a directory: %s" % args.path, file=sys.stderr)
+        return 2
+
+    files, skipped, sites, gated, tsjs = _scan_repo(root, args.exclude or [])
+    analysis = _analyze_scan(root, files, skipped, sites, gated, tsjs)
+    by_func = analysis["by_func"]
+    ts_by_func = analysis["ts_by_func"]
+    gated_funcs = analysis["gated_funcs"]
+    gated_site_count = analysis["gated_site_count"]
+    total = analysis["total"]
+    pct = analysis["pct"]
+    ts_gated = analysis["ts_gated"]
+    tsjs = analysis["tsjs"]
+    ts_sites = analysis["ts_sites"]
+    verbs = analysis["verbs"]
+
+    if getattr(args, "format", "text") == "json":
+        # Machine-readable risk report for CI. Read-only: no policy file,
+        # no diffs, no prompts.
+        print_scan_json(root, files, skipped, sites, gated_funcs, tsjs,
+                        ts_sites)
+        return 0
 
     if args.score:
         print_score_report(root, sites, gated_funcs)
@@ -1426,24 +1525,9 @@ def scan_cmd(args):
         ppath.write_text(_json.dumps(verbs, indent=2) + "\n")
         print("  policy written: %s" % ppath)
 
-    results = []  # (path, old_lines, new_lines, n_gates)
-    manuals = []
-    for path in sorted({s.file for s in sites}):
-        src = _pathlib.Path(path).read_text(encoding="utf-8")
-        rel = _pathlib.Path(path).relative_to(root)
-        gated_here = {(n, ln) for (f, n, ln) in gated if f == path}
-        edits, _, n_gates, manual = _build_edits(
-            path, rel, src, [s for s in sites if s.file == path], gated_here)
-        manuals.extend((path, m[0], m[1], m[2]) for m in manual)
-        if not edits:
-            continue
-        new_lines = _apply_edits(src.splitlines(keepends=True), edits)
-        results.append((path, src.splitlines(keepends=True), new_lines,
-                        n_gates))
-        diff = "".join(_difflib.unified_diff(
-            src.splitlines(keepends=True), new_lines,
-            fromfile="a/" + str(rel), tofile="b/" + str(rel)))
-        print(diff, end="")
+    results, manuals, total_gates = _build_instrumentation_plan(
+        root, sites, gated, gated_funcs)
+    _print_unified_diff(results)
     for path, func_name, verb, why in manuals:
         print("  manual: %s %s() [%s]: %s" % (path, func_name, verb, why))
 
@@ -1455,7 +1539,6 @@ def scan_cmd(args):
             print("nothing to instrument.")
         return 0
 
-    total_gates = sum(r[3] for r in results)
     do_apply = args.apply
     if do_apply and not args.yes:
         try:
@@ -1465,7 +1548,7 @@ def scan_cmd(args):
             ans = ""
         do_apply = ans in ("y", "yes")
     if do_apply:
-        for path, _old, new, _n in results:
+        for path, _old, new, _n, _rel in results:
             _pathlib.Path(path).write_text("".join(new), encoding="utf-8")
         print("applied %d gate(s) to %d file(s)." % (total_gates, len(results)))
     else:
@@ -1476,6 +1559,143 @@ def scan_cmd(args):
             print("error: --push-policy needs --key", file=sys.stderr)
             return 2
         return request("PUT", "/v1/policy", verbs, key=args.key)
+    return 0
+
+
+def wrap_cmd(args):
+    """Single-verb flow: scan -> explain -> diff -> approve -> apply -> verify."""
+    import json as _json
+    import tempfile as _tempfile
+
+    root = _pathlib.Path(args.path).resolve()
+    if not root.is_dir():
+        print("error: not a directory: %s" % args.path, file=sys.stderr)
+        return 2
+
+    # 1. Scan the repo.
+    files, skipped, sites, gated, tsjs = _scan_repo(root, args.exclude or [])
+    analysis = _analyze_scan(root, files, skipped, sites, gated, tsjs)
+    gated_funcs = analysis["gated_funcs"]
+    gated_site_count_before = analysis["gated_site_count"]
+    total_before = analysis["total"]
+    ts_sites = analysis["ts_sites"]
+    verbs = analysis["verbs"]
+
+    # 2. Print the risk report summary.
+    print("writ wrap: %s" % root)
+    if not total_before:
+        print("No write sites found.")
+        if ts_sites:
+            print("  note: %d TS/JS write site(s) found, but TS/JS is "
+                  "scan-only." % len(ts_sites))
+        return 1
+
+    print("  write sites: %d  gated: %d/%d (%d%%)"
+          % (total_before, gated_site_count_before, total_before,
+             (100 * gated_site_count_before // total_before)))
+    rows = _score_report_rows(root, sites, gated_funcs)
+    counts = {"high": 0, "medium": 0, "low": 0}
+    for tier, _, _, _, protected in rows:
+        if not protected:
+            counts[tier] += 1
+    print("  risk: HIGH=%d MEDIUM=%d LOW=%d"
+          % (counts["high"], counts["medium"], counts["low"]))
+    score = _writ_score(rows)
+    if score is None:
+        print("  Writ Score: N/A")
+    else:
+        print("  Writ Score: %d/100" % score)
+
+    # 3. Map findings to verbs and build the planned instrumentation diff.
+    results, manuals, total_gates = _build_instrumentation_plan(
+        root, sites, gated, gated_funcs)
+
+    if not results:
+        if ts_sites:
+            print("nothing to wrap (ts/js findings are scan-only; "
+                  "gate them by hand).")
+        else:
+            print("nothing to wrap.")
+        return 0
+
+    if args.diff_only:
+        _print_unified_diff(results)
+        return 0
+
+    # Show the planned diff as part of the explanation.
+    _print_unified_diff(results)
+    for path, func_name, verb, why in manuals:
+        print("  manual: %s %s() [%s]: %s" % (path, func_name, verb, why))
+
+    if args.dry_run:
+        print("\n--dry-run: no files or policy will be changed.")
+        return 0
+
+    # 4. Prompt for explicit approval (fail-closed; default N).
+    approved = args.yes
+    if not approved:
+        try:
+            ans = input("Apply %d instrumentations to %s? [y/N] "
+                        % (total_gates, root)).strip().lower()
+        except EOFError:
+            ans = ""
+        approved = ans in ("y", "yes")
+    if not approved:
+        print("No changes made.")
+        return 0
+
+    if args.yes:
+        print("warning: approval was pre-granted by --yes; applying without "
+              "prompt.")
+
+    # 5. Apply the diff per-file atomically.
+    failed = []
+    for path, _old, new_lines, _n, _rel in results:
+        target = _pathlib.Path(path)
+        tmp_path = None
+        try:
+            fd, tmp_path = _tempfile.mkstemp(
+                dir=str(target.parent),
+                prefix="." + target.name + ".writ-")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write("".join(new_lines))
+            os.replace(tmp_path, str(target))
+        except (OSError, IOError) as exc:
+            failed.append((path, exc))
+            if tmp_path:
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except OSError:
+                    pass
+
+    if failed:
+        print("error: apply failed for %d file(s):" % len(failed),
+              file=sys.stderr)
+        for path, exc in failed:
+            print("  %s: %s" % (path, exc), file=sys.stderr)
+        return 2
+
+    # 6. Write/update the policy file if new verbs were discovered.
+    policy_path = _pathlib.Path(args.policy) if args.policy \
+        else root / "writ-policy.json"
+    try:
+        _write_policy(policy_path, verbs)
+        print("  policy written: %s" % policy_path)
+    except (OSError, IOError) as exc:
+        print("error: failed to write policy %s: %s" % (policy_path, exc),
+              file=sys.stderr)
+        return 2
+
+    # 7. Re-scan and report coverage (before/after gated-site counts).
+    _files2, _skipped2, sites2, gated2, tsjs2 = _scan_repo(
+        root, args.exclude or [])
+    analysis2 = _analyze_scan(root, _files2, _skipped2, sites2, gated2, tsjs2)
+    print("wrapped %d gate(s) in %d file(s)."
+          % (total_gates, len(results)))
+    print("coverage: %d/%d -> %d/%d writes gated"
+          % (gated_site_count_before, total_before,
+             analysis2["gated_site_count"], analysis2["total"]))
     return 0
 
 
@@ -1876,6 +2096,40 @@ def main():
     scan.add_argument("--key", default="",
                       help="API key (for --push-policy)")
 
+    wrap = sub.add_parser(
+        "wrap",
+        help="Scan, diff, approve, and apply Writ gates in one command",
+        description=(
+            "Take a repo from unwrapped to wrapped in one step: scan for "
+            "write sites, show the risk report and planned instrumentation "
+            "diff, ask for explicit approval, then apply the gates and "
+            "update writ-policy.json."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  writ wrap .                       # interactive approval\n"
+            "  writ wrap . --dry-run             # preview only\n"
+            "  writ wrap . --yes                 # non-interactive CI mode\n"
+            "  writ wrap . --diff-only           # pipe diff into review tools\n"
+            "  writ wrap . --policy policy.json  # extend an existing policy\n"
+            "\n"
+            "Exit codes: 0 success/decline/dry-run, 1 no write sites found, "
+            "2 apply failed partway."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    wrap.add_argument("path", nargs="?", default=".", help="Repo root to wrap (default: .)")
+    wrap.add_argument("--exclude", action="append", default=[], metavar="SUBSTR",
+                      help="Skip paths containing SUBSTR (repeatable)")
+    wrap.add_argument("--policy", default="",
+                      help="Use an existing writ-policy.json instead of generating one")
+    wrap.add_argument("--dry-run", action="store_true",
+                      help="Show the plan and diff, then exit before the approval prompt")
+    wrap.add_argument("--yes", action="store_true",
+                      help="Apply automatically without prompting (for CI)")
+    wrap.add_argument("--diff-only", action="store_true",
+                      help="Print the unified diff and exit")
+
     report = sub.add_parser("report", help="Agent Action Report from receipts")
     rsrc = report.add_mutually_exclusive_group(required=True)
     rsrc.add_argument("--key", help="API key — fetch receipts from the Writ API")
@@ -1940,6 +2194,8 @@ def main():
         return request("POST", "/v1/tokens/verify", payload, key=args.key)
     if args.cmd == "scan":
         return scan_cmd(args)
+    if args.cmd == "wrap":
+        return wrap_cmd(args)
     if args.cmd == "report":
         return report_cmd(args)
     if args.cmd in ("revoke", "reinstate", "revoked"):

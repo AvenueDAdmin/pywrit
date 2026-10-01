@@ -30,7 +30,7 @@ first run it installs `pywrit[polyglot]` from PyPI using your Python 3.9+
 environment overrides (`WRIT_PYTHON`, `WRIT_SCAN_NO_INSTALL`), and the
 install test.
 
-## 60-second quickstart: scan → apply → gate
+## 60-second quickstart: scan → wrap → gate
 
 **1. Scan.** See which functions write, and how many of them are gated.
 
@@ -53,14 +53,17 @@ It also prints a **risk report** (0-100, weighted by risk tier), writes the disc
 verbs to `writ-policy.json`, and shows the instrumentation it would add as a unified
 diff. Nothing in your code changes yet. `writ scan . --score` prints just the risk report.
 
-**2. Apply.** Insert a gate at the top of each writing function.
+**2. Wrap.** One command takes the repo from unwrapped to wrapped: scan, show the diff,
+ask for explicit approval, apply the gates, and report before/after coverage.
 
 ```bash
-writ scan . --apply        # shows the diff, then asks before writing
-writ scan . --apply --yes  # no prompt (e.g. in CI)
+writ wrap .        # interactive approval
+writ wrap . --yes  # no prompt (e.g. in CI)
 ```
 
-Each gated function now asks Writ before it writes, and fails closed:
+`--dry-run` previews the plan and exits before prompting; `--diff-only` prints the
+unified diff for review tools. Each gated function now asks Writ before it writes, and
+fails closed:
 
 ```python
 def issue_refund(charge_id, amount_cents):
@@ -69,7 +72,8 @@ def issue_refund(charge_id, amount_cents):
     ...
 ```
 
-Re-run `writ scan .` and you'll see `gated: 4/4 (100%)`.
+`writ scan . --apply` is still available as the manual alternative. Re-run `writ scan .`
+and you'll see `gated: 4/4 (100%)`.
 
 **3. Gate.** Get a free API key, load the discovered policy, and run your agent.
 
@@ -201,6 +205,9 @@ What's covered:
 ## CLI reference
 
 ```bash
+writ wrap .                         # scan, diff, approve, apply, verify coverage
+writ wrap . --dry-run               # preview only
+writ wrap . --yes                   # non-interactive CI mode
 writ check --key writ_... --sponsor acme --agent agent-7 \
   --verb db.write --target prod.customers --purpose "backfill region field"
 writ policy --key writ_... --set payments.refund require_grant

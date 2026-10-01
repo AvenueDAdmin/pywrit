@@ -1,0 +1,85 @@
+---
+title: CLI reference
+---
+
+# CLI reference
+
+The `writ` command-line tool is the local scanner, client, and policy helper for
+Writ. The scanner is deterministic, makes no network calls, and needs no API
+key.
+
+## `writ wrap`
+
+A single guided command that takes a repo from unwrapped to wrapped:
+**scan → explain → diff → explicit approval → apply → verify coverage**.
+
+### Usage
+
+```bash
+writ wrap [path] [flags]
+```
+
+`path` defaults to the current directory.
+
+### Examples
+
+```bash
+# Interactive: scan, show the diff, prompt for approval, then apply
+writ wrap .
+
+# Preview only; no files or policy are changed
+writ wrap . --dry-run
+
+# Non-interactive approval for CI
+writ wrap . --yes
+
+# Print the unified diff and exit (for review tools)
+writ wrap . --diff-only
+
+# Extend an existing policy file instead of creating writ-policy.json
+writ wrap . --policy config/writ-policy.json
+
+# Skip paths containing a substring (repeatable)
+writ wrap . --exclude tests --exclude vendor
+```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Show the risk report and planned instrumentation diff, then exit before the approval prompt. |
+| `--yes` | Approve automatically; no interactive prompt. Prints a warning that approval was pre-granted. Intended for CI. |
+| `--policy PATH` | Use an existing `writ-policy.json` instead of generating one. New inferred verbs are merged in without overwriting existing values. |
+| `--diff-only` | Print the unified diff and exit. Useful for piping into review tools. |
+| `--exclude SUBSTR` | Skip paths containing `SUBSTR`. Repeatable. |
+
+### What it does
+
+1. **Scan** the target path for Python write sites (and TS/JS write sites in
+   scan-only mode when the polyglot extra is installed).
+2. **Print** a risk report summary: sites found, HIGH/MEDIUM/LOW counts, and
+   the Writ Score or `N/A`.
+3. **Map** findings to verbs using the existing inference engine and show the
+   planned instrumentation diff.
+4. **Prompt** for explicit approval: `Apply N instrumentations to <path>? [y/N]`.
+   The default is `N`; it is fail-closed and never applies without a `yes`.
+5. **Apply** the diff per-file atomically (write to a temporary file, then
+   rename). Already-gated code is left untouched.
+6. **Write or update** `writ-policy.json` (or the file passed to `--policy`) if
+   new verbs were discovered.
+7. **Re-scan** and report coverage as `before -> after` gated-site counts.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Wrapped successfully, the user declined cleanly, or `--dry-run` completed without errors. |
+| `1` | Scan found nothing to wrap. The message `No write sites found.` is printed. |
+| `2` | Apply failed partway. The failing files are printed; files that were applied successfully are left in place. |
+
+### Notes
+
+- `writ wrap` never invents verbs. It uses only inferred or policy-defined verbs.
+- TypeScript/JavaScript files are scan-only; `writ wrap` does not rewrite them.
+- `writ scan --apply` continues to work unchanged for users who prefer the
+  manual two-step flow.
