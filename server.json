@@ -1,21 +1,21 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.AvenueDAdmin/writ",
+  "name": "io.github.withwrit/writ",
   "title": "writ",
   "description": "Commit-time policy checks for AI agent writes (ALLOW/DENY/STEP_UP) with a tamper-evident audit log.",
   "repository": {
-    "url": "https://github.com/AvenueDAdmin/pywrit",
+    "url": "https://github.com/withwrit/pywrit",
     "source": "github",
     "subfolder": "mcp"
   },
-  "version": "0.1.2",
+  "version": "0.1.3",
   "websiteUrl": "https://withwrit.com",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "writ-mcp",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

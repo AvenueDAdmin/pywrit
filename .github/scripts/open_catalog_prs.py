@@ -3,7 +3,7 @@
 
 Runs in GitHub Actions on v* tags. Expects:
   GH_TOKEN      PAT with repo + pull-request scopes for NousResearch and punkpeye orgs.
-  VERSION       writ-mcp version (without leading v).
+  VERSION       writ-mcp version (without leading v). If unset, reads from mcp/pyproject.toml.
 
 What it does:
   1. Hermes (NousResearch/hermes-agent) — bumps the writ-mcp pin in
@@ -16,16 +16,18 @@ import re
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 TOKEN = os.environ.get("GH_TOKEN", "")
 VERSION = os.environ.get("VERSION", "")
 
-HERMES_FORK = "AvenueDAdmin/hermes-agent"
+HERMES_FORK = "withwrit/hermes-agent"
 HERMES_UPSTREAM = "NousResearch/hermes-agent"
-AWESOME_FORK = "AvenueDAdmin/awesome-mcp-servers"
+AWESOME_FORK = "withwrit/awesome-mcp-servers"
 AWESOME_UPSTREAM = "punkpeye/awesome-mcp-servers"
+
+REPO_URL = "https://github.com/withwrit/pywrit"
+REGISTRY_NAME = "io.github.withwrit/writ"
 
 
 def run(cmd, cwd=None, check=True):
@@ -69,15 +71,32 @@ def pr_exists(upstream, search):
     return out or None
 
 
+def resolve_mcp_version():
+    """Read writ-mcp version from mcp/pyproject.toml."""
+    text = Path("mcp/pyproject.toml").read_text()
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    if not m:
+        print("::error::Could not parse version from mcp/pyproject.toml")
+        sys.exit(1)
+    return m.group(1)
+
+
 def open_hermes_pr():
     branch = f"bump-writ-mcp-{VERSION}"
 
+    # Check for an existing PR from either the old or new org.
     existing = pr_exists(
         HERMES_UPSTREAM,
-        f"bump writ-mcp {VERSION} optional-mcps in:title",
+        f"is:pr is:open writ-mcp {VERSION} optional-mcps in:title",
+    ) or pr_exists(
+        HERMES_UPSTREAM,
+        "is:pr is:open author:AvenueDAdmin writ optional-mcps",
+    ) or pr_exists(
+        HERMES_UPSTREAM,
+        f"is:pr is:open author:withwrit writ-mcp {VERSION}",
     )
     if existing:
-        print(f"Hermes PR already exists: #{existing}")
+        print(f"Hermes PR already open: #{existing}")
         return
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -120,23 +139,26 @@ def open_awesome_pr():
         )
         if raw_url:
             readme = run(["curl", "-sL", raw_url], check=False).stdout
-            if "AvenueDAdmin/pywrit" in readme:
+            if "withwrit/pywrit" in readme or "AvenueDAdmin/pywrit" in readme:
                 print("Writ entry already present in punkpeye/awesome-mcp-servers README; skipping.")
                 return
     except subprocess.CalledProcessError:
         pass
 
-    # If a PR from our fork already exists, skip to avoid duplicates.
+    # If a PR from either org already exists, skip to avoid duplicates.
     existing = pr_exists(
         AWESOME_UPSTREAM,
-        f"is:pr is:open author:{AWESOME_FORK.split('/')[0]} writ MCP server",
+        "is:pr is:open author:AvenueDAdmin writ MCP server",
+    ) or pr_exists(
+        AWESOME_UPSTREAM,
+        "is:pr is:open author:withwrit writ MCP server",
     )
     if existing:
         print(f"punkpeye PR for Writ already open: #{existing}")
         return
 
     bullet = (
-        "- [writ](https://github.com/AvenueDAdmin/pywrit) - "
+        f"- [writ]({REPO_URL}) - "
         "Commit-time policy checks for AI agent writes (ALLOW/DENY/STEP_UP) "
         "with a tamper-evident audit log. 8 tools via `uvx writ-mcp`.\n\n"
     )
@@ -171,11 +193,11 @@ def open_awesome_pr():
             "--base", "main", "--head", f"{AWESOME_FORK.split('/')[0]}:{branch}",
             "--title", "Add writ MCP server",
             "--body", (
-                "Add [writ](https://github.com/AvenueDAdmin/pywrit) to the Security section.\n\n"
+                f"Add [writ]({REPO_URL}) to the Security section.\n\n"
                 "- Commit-time policy checks for AI agent writes (ALLOW/DENY/STEP_UP) "
                 "with a tamper-evident audit log.\n"
                 "- 8 tools via `uvx writ-mcp`.\n"
-                "- Listed on the MCP Registry at `io.github.AvenueDAdmin/writ`."
+                f"- Listed on the MCP Registry at `{REGISTRY_NAME}`."
             ),
         )
         print(f"Opened punkpeye PR for writ-mcp {VERSION}")
@@ -185,9 +207,10 @@ def main():
     if not TOKEN:
         print("::error::GH_TOKEN/CATALOG_PR_TOKEN secret is not set")
         sys.exit(1)
-    if not VERSION:
-        print("::error::VERSION is not set")
-        sys.exit(1)
+
+    global VERSION
+    VERSION = VERSION or resolve_mcp_version()
+    print(f"Using writ-mcp version: {VERSION}")
 
     configure_git()
     open_hermes_pr()

@@ -8,7 +8,7 @@ No API key, no signup. Same flat-badge design as the dynamic one, without the
 live count:
 
 ```md
-[![agent writes gated by Writ](https://cdn.jsdelivr.net/gh/AvenueDAdmin/pywrit@main/badge/writ-gated.svg)](https://withwrit.com)
+[![agent writes gated by Writ](https://cdn.jsdelivr.net/gh/withwrit/pywrit@main/badge/writ-gated.svg)](https://withwrit.com)
 ```
 
 Preview:

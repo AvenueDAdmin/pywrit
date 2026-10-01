@@ -23,7 +23,4 @@ jobs:
       - name: Open catalog PRs
         env:
           GH_TOKEN: ${{ secrets.CATALOG_PR_TOKEN }}
-          VERSION: ${{ github.ref_name }}
-        run: |
-          export VERSION=${VERSION#v}
-          python3 .github/scripts/open_catalog_prs.py
+        run: python3 .github/scripts/open_catalog_prs.py

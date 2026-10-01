@@ -99,14 +99,22 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Get writ-mcp version
+        id: mcp-version
+        run: |
+          VERSION=$(python3 -c "import re; print(re.search(r'^version\s*=\s*\"([^\"]+)\"', open('mcp/pyproject.toml').read(), re.M).group(1))")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install writ-mcp from source
         run: python -m pip install ./mcp
 
       - name: Wait for PyPI to serve the new version
         # The Smithery scanner pip-installs writ-mcp==VERSION at deploy time,
         # so the release job's twine upload must be visible first.
+        env:
+          MCP_VERSION: ${{ steps.mcp-version.outputs.version }}
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=$MCP_VERSION
           for i in $(seq 1 60); do
             SEEN=$(python -c "
           import json, urllib.request
@@ -128,7 +136,7 @@ jobs:
       - name: Build the .mcpb bundle
         run: python .github/smithery/build_mcpb.py
         env:
-          WRIT_MCP_VERSION: ${{ github.ref_name }}
+          WRIT_MCP_VERSION: ${{ steps.mcp-version.outputs.version }}
 
       - name: Check Smithery API key
         run: |
@@ -152,11 +160,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get writ-mcp version
+        id: mcp-version
+        run: |
+          VERSION=$(python3 -c "import re; print(re.search(r'^version\s*=\s*\"([^\"]+)\"', open('mcp/pyproject.toml').read(), re.M).group(1))")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install mcp-publisher
         run: |
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           sudo mv mcp-publisher /usr/local/bin/
           mcp-publisher --version || true
+
+      - name: Stamp version into server.json
+        env:
+          MCP_VERSION: ${{ steps.mcp-version.outputs.version }}
+        run: |
+          python3 - "$MCP_VERSION" <<'PY'
+          import json, sys
+          from pathlib import Path
+          ver = sys.argv[1]
+          p = Path("server.json")
+          data = json.loads(p.read_text())
+          data["version"] = ver
+          data["packages"][0]["version"] = ver
+          p.write_text(json.dumps(data, indent=2) + "\n")
+          PY
 
       - name: Publish to registry.modelcontextprotocol.io
         run: |

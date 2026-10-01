@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan for ungated writes
-        uses: AvenueDAdmin/pywrit@v0
+        uses: withwrit/pywrit@v0
         with:
           fail-on-risk: high # high | medium | low | never
           # path: src/          # scan a subdirectory instead of the whole repo

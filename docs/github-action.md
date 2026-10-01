@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: AvenueDAdmin/pywrit@v0
+      - uses: withwrit/pywrit@v0
         with:
           fail-on-risk: high
 ```

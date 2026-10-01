@@ -3,7 +3,7 @@
     "writ-scan": "bin/writ-scan.js"
   },
   "bugs": {
-    "url": "https://github.com/AvenueDAdmin/pywrit/issues"
+    "url": "https://github.com/withwrit/pywrit/issues"
   },
   "description": "Scan a repo for ungated write sites (database, HTTP, files, SDKs) - the free Writ scanner for JavaScript/TypeScript and Python codebases. Local, deterministic, no API key.",
   "engines": {
@@ -12,7 +12,7 @@
   "files": [
     "bin/"
   ],
-  "homepage": "https://github.com/AvenueDAdmin/pywrit#readme",
+  "homepage": "https://github.com/withwrit/pywrit#readme",
   "keywords": [
     "writ",
     "ai-agents",
@@ -26,7 +26,7 @@
   "repository": {
     "directory": "npm",
     "type": "git",
-    "url": "https://github.com/AvenueDAdmin/pywrit.git"
+    "url": "https://github.com/withwrit/pywrit.git"
   },
   "version": "0.2.7"
 }

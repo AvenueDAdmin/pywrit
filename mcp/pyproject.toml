@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "writ-mcp"
-version = "0.1.2"
+version = "0.1.3"
 description = "Writ MCP server — commit-time policy checks for AI agents (ALLOW/DENY/STEP_UP + audit receipts)"
 readme = "README.md"
 license = "MIT"
@@ -16,8 +16,8 @@ dependencies = [
 keywords = ["ai-agents", "mcp", "policy", "audit-log", "guardrails"]
 
 [project.urls]
-Homepage = "https://github.com/AvenueDAdmin/pywrit"
-Repository = "https://github.com/AvenueDAdmin/pywrit/tree/main/mcp"
+Homepage = "https://github.com/withwrit/pywrit"
+Repository = "https://github.com/withwrit/pywrit/tree/main/mcp"
 Documentation = "https://withwrit.com/docs"
 
 [project.scripts]

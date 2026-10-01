@@ -7,7 +7,7 @@ AWS) and records a hash-chained receipt for every decision.
 
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/avenuedadmin/pywrit)
 
-![writ scan finds 4 write sites in a Python agent (0/4 gated); writ scan --apply inserts gates; a re-scan shows 4/4 gated](https://raw.githubusercontent.com/AvenueDAdmin/pywrit/main/docs/assets/scan-python.gif)
+![writ scan finds 4 write sites in a Python agent (0/4 gated); writ scan --apply inserts gates; a re-scan shows 4/4 gated](https://raw.githubusercontent.com/withwrit/pywrit/main/docs/assets/scan-python.gif)
 
 `writ scan` is **local, deterministic, and free**: it parses your code with Python's
 `ast` module, makes no network calls, and needs no API key.
@@ -132,7 +132,7 @@ clients, Prisma writes, and JS SDK calls such as `stripe.refunds.create(...)`.
 (Still not covered: the *Python* SDK equivalents like `stripe.Refund.create(...)`
 — see "Not covered" above.)
 
-![writ scan on a TypeScript agent finds 5 write sites, 1 of 5 gated](https://raw.githubusercontent.com/AvenueDAdmin/pywrit/main/docs/assets/scan-tsjs.gif)
+![writ scan on a TypeScript agent finds 5 write sites, 1 of 5 gated](https://raw.githubusercontent.com/withwrit/pywrit/main/docs/assets/scan-tsjs.gif)
 
 ## GitHub Action
 
@@ -143,7 +143,7 @@ job summary. The check fails when an ungated finding meets your
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: AvenueDAdmin/pywrit@v0
+- uses: withwrit/pywrit@v0
   with:
     fail-on-risk: high   # high | medium | low | never
 ```
@@ -221,7 +221,7 @@ Show that your agent's writes are gated by Writ. Two flavors:
 **Static** (works today, no API key) — same design, no live count:
 
 ```md
-[![agent writes gated by Writ](https://cdn.jsdelivr.net/gh/AvenueDAdmin/pywrit@main/badge/writ-gated.svg)](https://withwrit.com)
+[![agent writes gated by Writ](https://cdn.jsdelivr.net/gh/withwrit/pywrit@main/badge/writ-gated.svg)](https://withwrit.com)
 ```
 
 **Dynamic** (live 30-day gated-write count from your audit log) — mint a badge

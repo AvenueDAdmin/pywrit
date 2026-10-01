@@ -8,7 +8,7 @@ everywhere automated. These are the manual channels — check each box as done.
 - [x] npm package published (`writ-scan`, if present)
 - [x] Smithery bundle published (`withwrit/writ-mcp`, if `mcp/` exists) —
       requires the `SMITHERY_API_KEY` repo secret; the job fails loudly if unset
-- [x] Official MCP Registry published (`io.github.AvenueDAdmin/writ`) —
+- [x] Official MCP Registry published (`io.github.withwrit/writ`) —
       uses GitHub Actions OIDC (`id-token: write` is already set in `release.yml`)
 - [x] GitHub Action `vX` / `vX.Y` tags moved (if the Action exists in-repo)
 - [x] Catalog PRs opened — Hermes optional-mcps + punkpeye/awesome-mcp-servers

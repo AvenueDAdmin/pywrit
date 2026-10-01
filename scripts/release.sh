@@ -273,5 +273,5 @@ git push origin "$TAG"
 
 echo
 echo "==> released $TAG. CI is publishing; watch it at:"
-echo "    https://github.com/AvenueDAdmin/pywrit/actions"
+echo "    https://github.com/withwrit/pywrit/actions"
 echo "    Then merge the $BRANCH branch into main (open a PR) so the version bump lands."
