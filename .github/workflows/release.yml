@@ -58,6 +58,11 @@ jobs:
         # id-token: write is kept so OIDC can be re-enabled once registry-side
         # claim matching is fixed.
         run: |
+          PKG_VERSION=$(node -p 'require("./package.json").version')
+          if [ "$(npm view writ-scan version 2>/dev/null || true)" = "$PKG_VERSION" ]; then
+            echo "writ-scan $PKG_VERSION already published; skipping npm publish"
+            exit 0
+          fi
           printf 'registry=https://registry.npmjs.org/\n//registry.npmjs.org/:_authToken=%s\n' "${NPM_TOKEN}" > .npmrc
           npm publish --access public
         env:
