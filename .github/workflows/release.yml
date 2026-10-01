@@ -143,3 +143,22 @@ jobs:
         run: npx -y @smithery/cli@4.11.1 mcp publish ./writ-mcp.mcpb -n withwrit/writ-mcp
         env:
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
+
+  mcp-registry:
+    name: Publish server.json to Official MCP Registry
+    needs: release
+    runs-on: ubuntu-latest
+    # This job uses GitHub OIDC (requires id-token: write at workflow level).
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          sudo mv mcp-publisher /usr/local/bin/
+          mcp-publisher --version || true
+
+      - name: Publish to registry.modelcontextprotocol.io
+        run: |
+          mcp-publisher login github-oidc
+          mcp-publisher publish server.json

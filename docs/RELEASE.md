@@ -26,12 +26,14 @@ publish half:
 2. **npm** — publishes `writ-scan` (once it exists; `--access public`).
 3. **Smithery** — builds a `.mcpb` bundle from `writ-mcp` and publishes it as
    `withwrit/writ-mcp`. Requires the `SMITHERY_API_KEY` repo secret.
-4. **GitHub Action tags** — force-moves `vX` and `vX.Y` to the new tag, so
-    `uses: AvenueDAdmin/pywrit@v0` always tracks the latest `v0.x.y`.
+4. **Official MCP Registry** — publishes `server.json` to
+   `registry.modelcontextprotocol.io` using GitHub Actions OIDC.
+5. **GitHub Action tags** — force-moves `vX` and `vX.Y` to the new tag, so
+    `uses: withwrit/pywrit@v0` always tracks the latest `v0.x.y`.
    (GitHub Marketplace listing is automatic on release — no separate step.)
-5. **Checklist issue** — opens a `release` issue from
+6. **Checklist issue** — opens a `release` issue from
     `.github/RELEASE_CHECKLIST.md` for the remaining manual or semi-automated channels.
-6. **Catalog PRs** — `.github/workflows/mcp-catalog-prs.yml` opens/updates PRs
+7. **Catalog PRs** — `.github/workflows/mcp-catalog-prs.yml` opens/updates PRs
    against the Hermes optional-mcps catalog and punkpeye/awesome-mcp-servers
    with the new `writ-mcp` version. Requires the `CATALOG_PR_TOKEN` repo secret.
 
@@ -72,18 +74,17 @@ can be deleted.
 
 ## Manual steps per release (also in the auto-opened checklist issue)
 
-> Most catalog work is now automated by `.github/workflows/mcp-catalog-prs.yml`.
-> The items below still need a human check or one-time action.
+> Catalog PRs and registry publishing are now automated; the items below still
+> need a human check or one-time action.
 
 - **Hermes optional-mcps** — PR is opened automatically; verify it merged.
 - **punkpeye/awesome-mcp-servers** — PR is opened automatically; verify it merged.
-- **Official MCP Registry** — version is published manually via `mcp-publisher`
-  (OIDC/GitHub auth). Consider adding a CI step to call
-  `mcp-publisher publish` once the registry supports trusted publishing.
+- **Official MCP Registry** — published automatically via OIDC; verify the new
+  version is queryable at `registry.modelcontextprotocol.io`.
 - **mcpservers.org** — one-time submission; the listing stays current via their
-  scrape. Add the badge to the README if not already present.
+  scrape. Verify the badge is in the README.
 - Update install/version references in the public **docs** (quickstart, changelog).
-- Verify the new version renders on PyPI / npm / Smithery.
+- Verify the new version renders on PyPI / npm / Smithery / MCP Registry.
 - Announce only if approved (launch drafts live in the adoption package).
 
 ## Releasing from a branch
