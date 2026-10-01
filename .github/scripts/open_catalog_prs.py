@@ -107,12 +107,66 @@ def open_hermes_pr():
         run(["git", "checkout", "-b", branch, "upstream/main"], cwd=dest)
 
         manifest = dest / "optional-mcps" / "writ" / "manifest.yaml"
-        if not manifest.exists():
-            print("::error::Hermes optional-mcps/writ/manifest.yaml not found")
-            sys.exit(1)
+        if manifest.exists():
+            text = manifest.read_text()
+            text = re.sub(r"writ-mcp==[^\s]+", f"writ-mcp=={VERSION}", text, count=1)
+            # Also update the source URL in case the org changed.
+            text = text.replace("AvenueDAdmin/pywrit", "withwrit/pywrit")
+        else:
+            manifest.parent.mkdir(parents=True, exist_ok=True)
+            text = f"""# Nous-approved MCP catalog entry.
+# Presence in this directory = approval. Merged via PR review.
+manifest_version: 1
 
-        text = manifest.read_text()
-        text = re.sub(r"writ-mcp==[^\s]+", f"writ-mcp=={VERSION}", text, count=1)
+name: writ
+description: >-
+  Commit-time policy checks for AI agent writes: ALLOW, DENY, or STEP_UP
+  decisions, with an audit receipt for every outcome.
+source: https://github.com/withwrit/pywrit
+
+# PyPI-installed stdio server. Hermes spawns `uvx` with an exact version pin
+# (required by the catalog's version-lock CI check); uvx fetches and runs the
+# writ-mcp package on demand — no manual install step for the user.
+transport:
+  type: stdio
+  command: uvx
+  args:
+    - writ-mcp=={VERSION}
+  env:
+    WRIT_API_KEY: "${{WRIT_API_KEY}}"
+    WRIT_SPONSOR_TOKEN: "${{WRIT_SPONSOR_TOKEN}}"
+
+auth:
+  type: api_key
+  env:
+    - name: WRIT_API_KEY
+      prompt: "Writ API key (starts with writ_ — free: POST /v1/keys with an email)"
+      required: true
+    - name: WRIT_SPONSOR_TOKEN
+      prompt: "Writ sponsor token (only needed for sponsor tools: grant, revoke, reinstate)"
+      required: false
+
+# Composer-suggestion triggers (desktop brand pills).
+suggest:
+  keywords:
+    - writ
+    - audit log
+    - policy check
+    - guardrails
+  hosts:
+    - withwrit.com
+  examples:
+    - "Check a payment with Writ before sending it"
+    - "Show recent Writ audit receipts"
+
+post_install: |
+  Get a free API key: POST /v1/keys with an email (quickstart at
+  withwrit.com/docs). Or try it keyless first — the writ_sandbox tool
+  issues a free 90-second demo grant with no key needed.
+
+  The sponsor token is only required for writ_grant / writ_revoke /
+  writ_reinstate. Restart the session so tools load.
+"""
         manifest.write_text(text)
 
         run(["git", "add", "optional-mcps/writ/manifest.yaml"], cwd=dest)
@@ -173,14 +227,14 @@ def open_awesome_pr():
         readme_path = dest / "README.md"
         text = readme_path.read_text()
         new_text, subs = re.subn(
-            r"^(###\s*🌐\s*<a name=\"social-media\"></a>Social Media\n)",
+            r"^(###\s*🔒\s*<a name=\"security\"></a>Security\n)",
             bullet + r"\1",
             text,
             count=1,
             flags=re.MULTILINE,
         )
         if subs != 1:
-            print("::error::Could not find Social Media section in punkpeye README")
+            print("::error::Could not find Security section in punkpeye README")
             sys.exit(1)
         readme_path.write_text(new_text)
 
