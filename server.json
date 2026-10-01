@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.AvenueDAdmin/writ",
+  "title": "writ",
+  "description": "Commit-time policy checks for AI agent writes (ALLOW/DENY/STEP_UP) with a tamper-evident audit log.",
+  "repository": {
+    "url": "https://github.com/AvenueDAdmin/pywrit",
+    "source": "github",
+    "subfolder": "mcp"
+  },
+  "version": "0.1.2",
+  "websiteUrl": "https://withwrit.com",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "writ-mcp",
+      "version": "0.1.2",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "WRIT_API_KEY",
+          "description": "Writ API key (get one free at https://withwrit.com)",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "WRIT_SPONSOR_TOKEN",
+          "description": "Writ sponsor token, only required for sponsor tools (grant, revoke, reinstate)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "WRIT_BASE_URL",
+          "description": "Optional custom Writ API base URL (default: https://api.withwrit.com)",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}
