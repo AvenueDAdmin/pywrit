@@ -24,11 +24,16 @@ publish half:
 
 1. **PyPI** — builds and uploads `pywrit` (and `writ-mcp` once it exists).
 2. **npm** — publishes `writ-scan` (once it exists; `--access public`).
-3. **GitHub Action tags** — force-moves `vX` and `vX.Y` to the new tag, so
+3. **Smithery** — builds a `.mcpb` bundle from `writ-mcp` and publishes it as
+   `withwrit/writ-mcp`. Requires the `SMITHERY_API_KEY` repo secret.
+4. **GitHub Action tags** — force-moves `vX` and `vX.Y` to the new tag, so
     `uses: AvenueDAdmin/pywrit@v0` always tracks the latest `v0.x.y`.
    (GitHub Marketplace listing is automatic on release — no separate step.)
-4. **Checklist issue** — opens a `release` issue from
-   `.github/RELEASE_CHECKLIST.md` for the manual channels.
+5. **Checklist issue** — opens a `release` issue from
+    `.github/RELEASE_CHECKLIST.md` for the remaining manual or semi-automated channels.
+6. **Catalog PRs** — `.github/workflows/mcp-catalog-prs.yml` opens/updates PRs
+   against the Hermes optional-mcps catalog and punkpeye/awesome-mcp-servers
+   with the new `writ-mcp` version. Requires the `CATALOG_PR_TOKEN` repo secret.
 
 Artifacts that don't exist yet are auto-detected and skipped — the pipeline
 covers them the moment they land, no workflow edits needed. Expected layout:
@@ -38,16 +43,19 @@ covers them the moment they land, no workflow edits needed. Expected layout:
 | `pywrit`       | `./pyproject.toml`                                       |
 | `writ-mcp`     | `mcp/pyproject.toml` (or `writ-mcp/pyproject.toml`)      |
 | `writ-scan`    | `npm/package.json` (or `npm/writ-scan/package.json`)     |
+| Smithery bundle| `.github/smithery/build_mcpb.py` + `mcp/pyproject.toml`   |
 | GitHub Action  | `action.yml`, `action/action.yml`, or `github-action/action.yml` |
 
 ## Secrets to configure (one time)
 
 Repo settings → Settings → Secrets and variables → Actions → New repository secret:
 
-| Secret           | Used by        | How to create it |
-|------------------|----------------|------------------|
-| `PYPI_API_TOKEN` | PyPI publish   | pypi.org → Account settings → API tokens → create a token scoped to **both** the `pywrit` and `writ-mcp` projects (or an account-scoped token). Paste the whole token, including the `pypi-` prefix. |
-| `NPM_TOKEN`      | npm publish    | npmjs.com → Access Tokens → Generate New Token → **Automation** type, with publish rights on `writ-scan`. |
+| Secret              | Used by           | How to create it |
+|---------------------|-------------------|------------------|
+| `PYPI_API_TOKEN`    | PyPI publish      | pypi.org → Account settings → API tokens → create a token scoped to **both** the `pywrit` and `writ-mcp` projects (or an account-scoped token). Paste the whole token, including the `pypi-` prefix. |
+| `NPM_TOKEN`         | npm publish       | npmjs.com → Access Tokens → Generate New Token → **Automation** type, with publish rights on `writ-scan`. |
+| `SMITHERY_API_KEY`  | Smithery publish  | smithery.ai → Account → API keys → create a key. The workflow publishes `withwrit/writ-mcp` from the built `.mcpb` bundle. |
+| `CATALOG_PR_TOKEN`  | Catalog PRs       | GitHub personal access token (classic or fine-grained) with `repo` and `pull_requests:write` scopes for the target organizations (`NousResearch`, `punkpeye`). Used by `.github/workflows/mcp-catalog-prs.yml` to fork and open PRs. |
 
 `GITHUB_TOKEN` is provided automatically by Actions; the workflow's
 `permissions` block (`contents: write`, `issues: write`) covers tag moves and
@@ -64,10 +72,18 @@ can be deleted.
 
 ## Manual steps per release (also in the auto-opened checklist issue)
 
-- Bump the `writ-mcp` version in the Hermes **optional-mcps** catalog manifest.
-- Update version on **MCP registry listings**.
+> Most catalog work is now automated by `.github/workflows/mcp-catalog-prs.yml`.
+> The items below still need a human check or one-time action.
+
+- **Hermes optional-mcps** — PR is opened automatically; verify it merged.
+- **punkpeye/awesome-mcp-servers** — PR is opened automatically; verify it merged.
+- **Official MCP Registry** — version is published manually via `mcp-publisher`
+  (OIDC/GitHub auth). Consider adding a CI step to call
+  `mcp-publisher publish` once the registry supports trusted publishing.
+- **mcpservers.org** — one-time submission; the listing stays current via their
+  scrape. Add the badge to the README if not already present.
 - Update install/version references in the public **docs** (quickstart, changelog).
-- Verify the new version renders on PyPI / npm.
+- Verify the new version renders on PyPI / npm / Smithery.
 - Announce only if approved (launch drafts live in the adoption package).
 
 ## Releasing from a branch

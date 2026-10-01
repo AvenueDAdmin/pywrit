@@ -5,6 +5,8 @@ client and `writ` CLI for [Writ](https://withwrit.com): an allow/deny gate that 
 in front of your agent's consequential writes (database, HTTP, files, email, queues,
 AWS) and records a hash-chained receipt for every decision.
 
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/avenuedadmin/pywrit)
+
 ![writ scan finds 4 write sites in a Python agent (0/4 gated); writ scan --apply inserts gates; a re-scan shows 4/4 gated](https://raw.githubusercontent.com/AvenueDAdmin/pywrit/main/docs/assets/scan-python.gif)
 
 `writ scan` is **local, deterministic, and free**: it parses your code with Python's
