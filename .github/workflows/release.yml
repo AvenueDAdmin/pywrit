@@ -90,7 +90,6 @@ jobs:
     name: Publish writ-mcp bundle to Smithery
     needs: release
     runs-on: ubuntu-latest
-    if: hashFiles('mcp/pyproject.toml') != ''
     steps:
       - uses: actions/checkout@v4
 
@@ -157,6 +156,7 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     # This job uses GitHub OIDC (requires id-token: write at workflow level).
+    # mcp/pyproject.toml is assumed to exist; the job reads writ-mcp's version from it.
     steps:
       - uses: actions/checkout@v4
 
