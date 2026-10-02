@@ -151,6 +151,38 @@ job summary. The check fails when an ungated finding meets your
 No API key needed. Full reference: [docs/github-action.md](docs/github-action.md) ·
 example workflow: [examples/github-action/writ-scan.yml](examples/github-action/writ-scan.yml)
 
+## MCP server (`writ-mcp`)
+
+Give any MCP-compatible agent commit-time policy checks. `writ-mcp` is a
+[Model Context Protocol](https://modelcontextprotocol.io) server (stdio transport,
+built on the MCP Python SDK) that exposes the Writ gate as **8 MCP tools**:
+the agent calls `writ_check` before a consequential write and gets back `ALLOW`,
+`DENY`, or `STEP_UP` — with a tamper-evident, hash-chained audit receipt for
+every decision.
+
+```bash
+uvx writ-mcp            # no install — runs on demand
+# or
+pip install writ-mcp   # then run `writ-mcp`
+```
+
+| Tool | What it does |
+|---|---|
+| `writ_check` | The gate: `ALLOW` / `DENY` / `STEP_UP` for a proposed write |
+| `writ_verify_token` | Validate an `ALLOW` auth token (catches purpose drift) |
+| `writ_grant` | Human-sponsor approval for the `STEP_UP` path |
+| `writ_revoke` / `writ_reinstate` | The kill switch |
+| `writ_receipts` | Read the tenant's audit log |
+| `writ_policy` | Manage the verb policy |
+| `writ_sandbox` | Keyless 90-second demo grant — no API key needed |
+
+The gate tools need a free Writ API key (`WRIT_API_KEY`): 10,000 receipts/month
+free, no credit card. `writ_sandbox` works with no key at all.
+
+The server implementation lives in [`mcp/`](mcp/) (MIT). Also published on the
+official MCP Registry as `io.github.withwrit/writ` and on
+[Smithery](https://smithery.ai/server/withwrit/writ-mcp).
+
 ## Python client
 
 ```python
