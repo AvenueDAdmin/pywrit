@@ -153,7 +153,7 @@ example workflow: [examples/github-action/writ-scan.yml](examples/github-action/
 
 ## MCP server (`writ-mcp`)
 
-Give any MCP-compatible agent commit-time policy checks. `writ-mcp` is a
+Give any MCP-compatible agent point-of-action policy checks. `writ-mcp` is a
 [Model Context Protocol](https://modelcontextprotocol.io) server (stdio transport,
 built on the MCP Python SDK) that exposes the Writ gate as **8 MCP tools**:
 the agent calls `writ_check` before a consequential write and gets back `ALLOW`,
