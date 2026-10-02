@@ -1,7 +1,7 @@
 # writ-mcp
 
 The [Writ](https://withwrit.com) gate as an MCP server. Give any MCP-compatible
-agent commit-time control: the agent calls Writ **before** a consequential
+agent point-of-action control: the agent calls Writ **before** a consequential
 write, gets back `ALLOW`, `DENY`, or `STEP_UP`, and every outcome creates an
 audit receipt.
 
@@ -79,7 +79,7 @@ The tool descriptions teach the agent this flow, but the short version:
 | Tool | Who | What |
 |---|---|---|
 | `writ_check` | agent | Decision + 90s purpose-bound token |
-| `writ_verify_token` | agent | Commit-time token verification |
+| `writ_verify_token` | agent | Point-of-action token verification |
 | `writ_grant` | sponsor | Approve a STEP_UP (one-time grant) |
 | `writ_revoke` / `writ_reinstate` | sponsor | Kill switch on/off for a principal |
 | `writ_receipts` | agent | Audit trail of decisions |
