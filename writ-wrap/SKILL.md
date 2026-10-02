@@ -84,6 +84,9 @@ For a score-only summary:
 writ scan . --score
 ```
 
+For the guided single-verb flow, skip ahead to step 4 and use `writ wrap .`
+instead of `writ scan . --apply`.
+
 ---
 
 ## 3. Map findings to Writ verbs
@@ -119,7 +122,8 @@ Never invent a verb and hope the gate knows it — always verify with
 
 ## 4. Show the planned diff and get explicit approval
 
-`writ scan --apply` will insert a gate at the top of each writing function:
+`writ wrap` (or `writ scan --apply`) will insert a gate at the top of each
+writing function:
 
 ```python
 def issue_refund(charge_id, amount_cents):
@@ -131,11 +135,11 @@ def issue_refund(charge_id, amount_cents):
 Preview the diff first:
 
 ```bash
-writ scan . --apply --dry-run
+writ wrap . --dry-run
 ```
 
-(If `--dry-run` is not supported by the current CLI, use the diff printed by
-`writ scan .` without `--apply`.)
+`--diff-only` prints the unified diff and exits, which is useful for piping
+into review tools. `writ scan .` without `--apply` prints the same diff.
 
 Show the user the diff and ask for explicit approval:
 
@@ -147,13 +151,27 @@ Do **not** apply without the user's explicit yes.
 
 ## 5. Apply the instrumentation
 
-Once approved:
+Once approved, use the guided command:
+
+```bash
+writ wrap .
+```
+
+`writ wrap` scans, shows the diff, prompts for explicit approval, applies the
+gates per-file atomically, writes (or updates) `writ-policy.json`, and re-scans
+reporting before/after coverage. For non-interactive environments such as CI,
+use `--yes`:
+
+```bash
+writ wrap . --yes
+```
+
+The manual alternative is still available:
 
 ```bash
 writ scan . --apply
 ```
 
-The CLI will show the diff and prompt before writing unless you pass `--yes`.
 Re-run the scan to confirm coverage:
 
 ```bash
@@ -277,5 +295,6 @@ print(result.decision)  # ALLOW
 - [ ] Never invent verbs the gate doesn't know — run `writ policy` first.
 - [ ] Customer-facing language: **"audit log"**, not "receipts".
 - [ ] No fake coverage claims — always mention the scanner's listed gaps.
-- [ ] Always get explicit user approval before `writ scan . --apply`.
-- [ ] TS/JS scanning is scan-only; do not claim `--apply` rewrites TS/JS.
+- [ ] Always get explicit user approval before `writ scan . --apply` or `writ wrap .`.
+- [ ] Prefer the guided `writ wrap .` flow; keep `writ scan . --apply` as the manual alternative.
+- [ ] TS/JS scanning is scan-only; do not claim `--apply` or `writ wrap` rewrites TS/JS.
