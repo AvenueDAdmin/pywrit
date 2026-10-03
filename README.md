@@ -185,7 +185,7 @@ free, no credit card. `writ_sandbox` works with no key at all.
 
 The server implementation lives in [`mcp/`](mcp/) (MIT). Also published on the
 official MCP Registry as `io.github.withwrit/writ`, on
-[Smithery](https://smithery.ai/server/withwrit/writ-mcp), and on
+[Smithery](https://smithery.ai/server/withwrit/writ-mcp), and listed on
 [Glama](https://glama.ai/mcp/servers/withwrit/pywrit).
 
 ## Python client
